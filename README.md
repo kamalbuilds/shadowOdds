@@ -228,9 +228,33 @@ All feeds use exponent -8 (8 decimal places of precision).
 
 ---
 
-## Honest Disclosure
+### OpenClaw ShadowOdds Betting Skill             
+                                                                                        
+  A complete OpenClaw skill at openclaw-shadowodds/ that lets agents autonomously place privacy-preserving bets on ShadowOdds
+  markets:
 
-**Bet AMOUNT is public.** Only DIRECTION (YES/NO) is hidden. The total pool sizes for YES and NO are revealed after the reveal phase. This is still the first time commit-reveal betting with ZK privacy has been combined on EVM — a meaningful step toward fully private prediction markets.
+  openclaw-shadowodds/
+  ├── SKILL.md           ← OpenClaw agent instructions
+  ├── scripts/           ← Shell scripts for manual testing
+  └── service/           ← Express backend (TypeScript)
+      ├── index.ts       ← REST API (6 endpoints)
+      ├── chain.ts       ← Viem contract interactions
+      └── db.ts          ← JSON file persistence
+
+  API endpoints: /status, /markets, /bet, /pending, /reveal, /claim
+
+  Live test on EC2
+
+  - Service deployed inside agentmarket-openclaw Docker container on 52.91.198.101
+  - 14 markets read live from Monad testnet
+  - Real bet placed on-chain: 25 USDC YES on market #4 ("Will BTC hit $100,000 in 48 hours?")
+  - Tx: 0x45621c0c80f0db1ffd991f2ee9351f4b30b260d2478fdc14b16b0bd0a8b16cf2
+  - Bet direction hidden via commit-reveal — on-chain observers only see a commitment hash
+
+  How agents use it
+
+  OpenClaw agents read the SKILL.md and use curl to call the service — they can fetch markets, pick the best opportunity, place a
+  private bet, and auto-reveal/claim when resolved. The whole flow requires zero human interaction.
 
 ---
 
