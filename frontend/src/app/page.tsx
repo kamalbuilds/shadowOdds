@@ -20,13 +20,13 @@ function MarketFetcher({ id }: { id: number }) {
   });
 
   if (isLoading) {
-    return <div className="rounded-2xl border border-gray-800/50 bg-[#0C0E14] p-5 shimmer h-52" />;
+    return <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/50 p-5 shimmer h-48" />;
   }
 
   if (isError || !data) {
     return (
-      <div className="rounded-2xl border border-gray-800/50 bg-[#0C0E14] p-5 flex items-center justify-center h-52">
-        <p className="text-gray-600 text-sm">Failed to load market #{id}</p>
+      <div className="rounded-xl border border-zinc-800/50 bg-zinc-900/50 p-5 flex items-center justify-center h-48">
+        <p className="text-zinc-600 text-sm">Failed to load market #{id}</p>
       </div>
     );
   }
@@ -57,7 +57,7 @@ function MarketsList() {
 
   if (!SHADOW_ODDS_ADDRESS) {
     return (
-      <div className="text-center py-16 text-gray-500">
+      <div className="text-center py-16 text-zinc-500">
         <p className="text-lg mb-2">Contract not configured</p>
         <p className="text-sm">Set NEXT_PUBLIC_SHADOW_ODDS_ADDRESS in your .env</p>
       </div>
@@ -66,9 +66,9 @@ function MarketsList() {
 
   if (countLoading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="rounded-2xl border border-gray-800/50 bg-[#0C0E14] p-5 shimmer h-52" />
+          <div key={i} className="rounded-xl border border-zinc-800/50 bg-zinc-900/50 p-5 shimmer h-48" />
         ))}
       </div>
     );
@@ -79,19 +79,14 @@ function MarketsList() {
   if (count === 0) {
     return (
       <div className="text-center py-16">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-[#0C0E14] border border-gray-800/50 flex items-center justify-center">
-          <svg className="w-7 h-7 text-gray-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-          </svg>
-        </div>
-        <p className="text-gray-400 text-lg mb-2">No markets yet</p>
-        <p className="text-gray-600 text-sm">Markets will appear here once created.</p>
+        <p className="text-zinc-400 text-lg mb-2">No markets yet</p>
+        <p className="text-zinc-600 text-sm">Markets will appear here once created.</p>
       </div>
     );
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       {Array.from({ length: count }, (_, i) => i + 1).map((id) => (
         <MarketFetcher key={id} id={id} />
       ))}
@@ -101,135 +96,72 @@ function MarketsList() {
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-[#06070B]">
+    <div className="min-h-screen bg-[#09090b]">
       {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-[#151820] bg-[#06070B]/85 backdrop-blur-md">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+      <header className="sticky top-0 z-50 border-b border-zinc-800/50 bg-[#09090b]/80 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#00FF94] to-[#7C3AED] flex items-center justify-center shadow-[0_0_12px_#00FF9420]">
-              <span className="text-black text-[10px] font-black">S</span>
+            <div className="w-7 h-7 rounded-md bg-[#00e87b] flex items-center justify-center">
+              <span className="text-black text-xs font-bold">S</span>
             </div>
-            <span className="text-white font-bold text-base tracking-tight">ShadowOdds</span>
-            <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[9px] font-mono text-[#00FF94] bg-[#00FF9410] border border-[#00FF9420]">
-              MONAD
-            </span>
+            <span className="text-white font-semibold text-[15px]">ShadowOdds</span>
           </div>
-          <div className="flex items-center gap-2.5">
-            <Link href="/speed" className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-mono font-bold text-[#00FF94] border border-[#00FF9420] bg-[#00FF940A] hover:bg-[#00FF9415] transition-colors">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00FF94] status-live" />
-              SPEED
+          <div className="flex items-center gap-3">
+            <Link
+              href="/speed"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-700 transition-colors"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00e87b] pulse-live" />
+              Speed
+            </Link>
+            <Link
+              href="/dashboard"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium text-zinc-300 hover:text-white border border-zinc-800 hover:border-zinc-700 transition-colors"
+            >
+              My Bets
             </Link>
             <ConnectButton />
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
-      <section className="relative max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-12 overflow-hidden">
-        {/* Subtle ambient glow */}
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[#00FF94] opacity-[0.02] blur-[100px] rounded-full pointer-events-none" />
-        <div className="absolute top-10 right-10 w-[400px] h-[400px] bg-[#7C3AED] opacity-[0.025] blur-[100px] rounded-full pointer-events-none" />
-
-        <div className="relative text-center max-w-3xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#151820] bg-[#0C0E14] text-[11px] text-gray-400 mb-6 fade-in-up">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#00FF94] pulse-green" />
-            First private prediction market on EVM
-          </div>
-
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black leading-[1.05] mb-5 tracking-tight fade-in-up fade-in-up-delay-1">
-            <span className="text-white">Your bets are</span>{" "}
-            <span className="gradient-text">hidden.</span>
+      {/* Hero */}
+      <section className="max-w-6xl mx-auto px-5 pt-20 pb-14">
+        <div className="max-w-2xl">
+          <p className="text-[#00e87b] text-sm font-medium mb-3 fade-in">
+            Private prediction market on Monad
+          </p>
+          <h1 className="text-4xl sm:text-5xl font-bold text-white leading-[1.1] mb-4 tracking-tight fade-in fade-in-d1">
+            Your bets stay hidden.
           </h1>
-
-          <p className="text-gray-400 text-base sm:text-lg leading-relaxed mb-3 max-w-2xl mx-auto fade-in-up fade-in-up-delay-2">
-            On Polymarket, anyone sees your positions. Front-runners exploit you.
-            Market makers track your wallet. Those days are over.
+          <p className="text-zinc-400 text-lg leading-relaxed mb-4 fade-in fade-in-d2">
+            On Polymarket, everyone sees your positions. Front-runners exploit you.
+            ShadowOdds hides your direction with commit-reveal cryptography and
+            shields your winnings through Unlink ZK privacy pools.
           </p>
-
-          <p className="text-gray-600 text-sm leading-relaxed max-w-xl mx-auto fade-in-up fade-in-up-delay-3">
-            Commit-reveal cryptography + Unlink ZK privacy pools. Trustless Pyth oracle resolution on Monad.
+          <p className="text-zinc-600 text-sm fade-in fade-in-d3">
+            Bet amount is visible for settlement. Direction (YES/NO) is hidden on-chain.
           </p>
-
-          {/* Tech badges */}
-          <div className="flex flex-wrap items-center justify-center gap-2 mt-6 fade-in-up fade-in-up-delay-3">
-            {[
-              { label: "Monad", desc: "10k TPS", color: "#836EF9" },
-              { label: "Pyth", desc: "400ms", color: "#7C3AED" },
-              { label: "Unlink", desc: "ZK pool", color: "#00FF94" },
-              { label: "USDC", desc: "settle", color: "#2775CA" },
-            ].map((tech) => (
-              <span
-                key={tech.label}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-mono border bg-[#0C0E14]"
-                style={{ borderColor: `${tech.color}20`, color: tech.color }}
-              >
-                <span className="w-1 h-1 rounded-full" style={{ backgroundColor: tech.color }} />
-                {tech.label}
-                <span className="text-gray-600">{tech.desc}</span>
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* HONEST DISCLOSURE */}
-      <section className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pb-10">
-        <div className="rounded-2xl border border-[#7C3AED30] bg-[#7C3AED08] p-5 max-w-2xl mx-auto">
-          <div className="flex items-start gap-3">
-            <div className="shrink-0 w-8 h-8 rounded-lg bg-[#7C3AED15] border border-[#7C3AED30] flex items-center justify-center text-sm">
-              <svg className="w-4 h-4 text-[#7C3AED]" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div>
-              <h2 className="text-white font-bold text-sm mb-2 flex items-center gap-2">
-                HONEST DISCLOSURE
-                <span className="text-[10px] font-normal text-[#7C3AED] font-mono">[important]</span>
-              </h2>
-              <div className="space-y-1.5 text-[13px] text-gray-300 leading-relaxed">
-                <p>
-                  <span className="text-white font-semibold">Bet AMOUNT is visible</span>
-                  <span className="text-gray-500"> — required for on-chain settlement.</span>
-                </p>
-                <p>
-                  <span className="text-[#00FF94] font-semibold">DIRECTION (YES/NO) is hidden</span>
-                  <span className="text-gray-500"> — keccak256 commit-reveal until you choose to reveal.</span>
-                </p>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
 
       {/* Privacy Flow */}
       <PrivacyFlow />
 
-      {/* Markets + Live Feed — Two Column Layout */}
-      <section className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-white text-xl font-bold tracking-tight">Active Markets</h2>
-            <p className="text-gray-600 text-[13px] mt-0.5">Multi-asset prediction markets with hidden positions</p>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-gray-600 font-mono">
-              <span className="bg-gray-800 text-gray-700 px-1.5 py-0.5 rounded text-[10px]">████</span>
-              <span>= hidden</span>
-            </div>
-            <Link
-              href="/speed"
-              className="sm:hidden flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold text-[#00FF94] border border-[#00FF9420] bg-[#00FF940A]"
-            >
-              <span className="w-1.5 h-1.5 rounded-full bg-[#00FF94] status-live" />
-              SPEED
-            </Link>
-          </div>
+      {/* Markets + Live Feed */}
+      <section className="max-w-6xl mx-auto px-5 pb-20">
+        <div className="flex items-baseline justify-between mb-6">
+          <h2 className="text-white text-xl font-semibold">Markets</h2>
+          <Link
+            href="/speed"
+            className="sm:hidden text-xs text-zinc-400 hover:text-white transition-colors"
+          >
+            Speed Markets →
+          </Link>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
-          {/* Markets */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
           <MarketsList />
-          {/* Activity Feed sidebar */}
           <div className="hidden lg:block">
             <div className="sticky top-20">
               <LiveActivityFeed />
@@ -238,27 +170,15 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Stats Footer */}
-      <footer className="border-t border-[#151820]">
-        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {[
-              { label: "Network", value: "Monad", sub: "10,000 TPS" },
-              { label: "Block Time", value: "400ms", sub: "Near-instant" },
-              { label: "Oracle", value: "Pyth", sub: "Trustless feeds" },
-              { label: "Privacy", value: "Unlink", sub: "ZK shielded" },
-            ].map((stat) => (
-              <div key={stat.label} className="rounded-xl border border-[#151820] bg-[#0C0E14] p-3.5 text-center">
-                <p className="text-gray-700 text-[10px] mb-0.5 uppercase tracking-widest font-mono">{stat.label}</p>
-                <p className="text-[#00FF94] font-bold text-base font-mono">{stat.value}</p>
-                <p className="text-gray-700 text-[10px] mt-0.5">{stat.sub}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-5 text-center text-gray-800 text-[10px] font-mono tracking-wide">
-            Unlink x Monad Hackathon &middot; Commit-reveal &middot; Pyth oracle &middot; ZK shielding &middot; USDC
-          </div>
+      {/* Footer */}
+      <footer className="border-t border-zinc-800/50">
+        <div className="max-w-6xl mx-auto px-5 py-6 flex items-center justify-between">
+          <p className="text-zinc-700 text-xs">
+            Monad &middot; Pyth Oracle &middot; Unlink ZK &middot; USDC
+          </p>
+          <p className="text-zinc-800 text-xs">
+            Unlink x Monad Hackathon 2026
+          </p>
         </div>
       </footer>
     </div>

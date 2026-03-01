@@ -27,6 +27,8 @@ import { ConnectButton } from "@/components/ConnectButton";
 import { UnlinkWallet } from "@/components/UnlinkWallet";
 import { PrivacyScore } from "@/components/PrivacyScore";
 import { ShadowReceipt } from "@/components/ShadowReceipt";
+import { PrivacyTimeline } from "@/components/PrivacyTimeline";
+import { PrivateAdapter } from "@/components/PrivateAdapter";
 import ShadowOddsABI from "@/lib/ShadowOddsABI.json";
 
 const ERC20_ABI = parseAbi([
@@ -40,13 +42,11 @@ const PYTH_ABI = parseAbi([
   "function getUpdateFee(bytes[] calldata updateData) view returns (uint256)",
 ]);
 
-/** Convert Pyth raw price to human-readable USD (ETH/USD expo=-8) */
 function pythPriceToUSD(raw: bigint): string {
   const val = Number(raw) / 1e8;
   return val.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
 }
 
-// ---- Live Price from Pyth Hermes (works with any feed) ----
 function useLivePrice(feedId: string) {
   const [price, setPrice] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,13 +54,11 @@ function useLivePrice(feedId: string) {
   const fetchPrice = useCallback(async () => {
     if (!feedId || feedId === "0x" + "0".repeat(64)) { setLoading(false); return; }
     try {
-      const res = await fetch(
-        `${PYTH_HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}`
-      );
+      const res = await fetch(`${PYTH_HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}`);
       const json = await res.json();
       const p = json?.parsed?.[0]?.price;
       if (p) setPrice(Number(p.price) * Math.pow(10, p.expo));
-    } catch { /* silently fail */ }
+    } catch { /* */ }
     finally { setLoading(false); }
   }, [feedId]);
 
@@ -73,24 +71,22 @@ function useLivePrice(feedId: string) {
   return { price, loading };
 }
 
-// ---- Status Badge ----
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; cls: string }> = {
-    betting: { label: "BETTING OPEN", cls: "bg-[#00FF941A] border-[#00FF9440] text-[#00FF94]" },
-    pending: { label: "PENDING RESOLUTION", cls: "bg-yellow-900/20 border-yellow-700/30 text-yellow-400" },
-    reveal: { label: "REVEAL WINDOW", cls: "bg-purple-900/20 border-purple-700/30 text-purple-400" },
-    resolved: { label: "RESOLVED", cls: "bg-gray-800 border-gray-700 text-gray-300" },
+    betting: { label: "Betting Open", cls: "text-[#00e87b] bg-[#00e87b]/10" },
+    pending: { label: "Pending", cls: "text-amber-400 bg-amber-400/10" },
+    reveal: { label: "Reveal Window", cls: "text-[#836EF9] bg-[#836EF9]/10" },
+    resolved: { label: "Resolved", cls: "text-zinc-400 bg-zinc-800" },
   };
   const s = map[status] ?? map.resolved;
   return (
-    <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold font-mono ${s.cls}`}>
-      {status === "betting" && <span className="w-1.5 h-1.5 rounded-full bg-[#00FF94] animate-pulse" />}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium ${s.cls}`}>
+      {status === "betting" && <span className="w-1 h-1 rounded-full bg-[#00e87b] pulse-live" />}
       {s.label}
     </span>
   );
 }
 
-// ---- USDC Faucet (MockUSDC only) ----
 function USDCFaucet({ address }: { address: `0x${string}` }) {
   const { writeContractAsync } = useWriteContract();
   const [status, setStatus] = useState<"idle" | "minting" | "done" | "error">("idle");
@@ -102,26 +98,25 @@ function USDCFaucet({ address }: { address: `0x${string}` }) {
         address: USDC_ADDRESS,
         abi: ERC20_ABI,
         functionName: "mint",
-        args: [address, parseUnits("10000", 6)], // 10,000 USDC
+        args: [address, parseUnits("10000", 6)],
       });
       setStatus("done");
     } catch { setStatus("error"); }
   }
 
-  if (status === "done") return <p className="text-xs text-[#00FF94] font-mono">+10,000 USDC minted!</p>;
+  if (status === "done") return <p className="text-xs text-[#00e87b]">+10,000 USDC minted</p>;
 
   return (
     <button
       onClick={handleMint}
       disabled={status === "minting"}
-      className="text-xs font-mono text-[#00FF94] border border-[#00FF9430] px-3 py-1 rounded hover:bg-[#00FF9410] transition-colors disabled:opacity-50"
+      className="text-xs text-[#00e87b] hover:text-[#00d46f] transition-colors disabled:opacity-50"
     >
-      {status === "minting" ? "Minting..." : "Get 10k USDC (testnet)"}
+      {status === "minting" ? "Minting..." : "Get 10k USDC"}
     </button>
   );
 }
 
-// ---- Resolve with Pyth button ----
 function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: number; feedId: string; onResolved: () => void }) {
   const [status, setStatus] = useState<"idle" | "fetching" | "resolving" | "done" | "error">("idle");
   const [msg, setMsg] = useState("");
@@ -130,19 +125,15 @@ function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: num
 
   async function handleResolve() {
     setStatus("fetching");
-    setMsg("Fetching live Pyth price...");
+    setMsg("Fetching Pyth price...");
     try {
-      // 1. Fetch fresh VAA from Hermes
-      const res = await fetch(
-        `${PYTH_HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}&encoding=hex`
-      );
+      const res = await fetch(`${PYTH_HERMES_URL}/v2/updates/price/latest?ids[]=${feedId}&encoding=hex`);
       const data = await res.json();
       const vaaHex = `0x${data.binary.data[0]}` as `0x${string}`;
       const livePrice = Number(data.parsed[0].price.price) * Math.pow(10, data.parsed[0].price.expo);
       const asset = feedInfo(feedId);
-      setMsg(`${asset.symbol} at $${livePrice.toFixed(2)} — submitting to Pyth...`);
+      setMsg(`${asset.symbol} at $${livePrice.toFixed(2)}`);
 
-      // 2. Get update fee from Pyth contract
       const fee = await publicClient!.readContract({
         address: PYTH_ADDRESS,
         abi: PYTH_ABI,
@@ -151,9 +142,6 @@ function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: num
       });
 
       setStatus("resolving");
-      setMsg("Calling resolveWithPyth on-chain...");
-
-      // 3. Call resolveWithPyth
       await writeContractAsync({
         address: SHADOW_ODDS_ADDRESS,
         abi: ShadowOddsABI,
@@ -163,7 +151,7 @@ function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: num
       });
 
       setStatus("done");
-      setMsg(`Resolved! ${asset.symbol} was $${livePrice.toFixed(2)}`);
+      setMsg(`Resolved at $${livePrice.toFixed(2)}`);
       setTimeout(onResolved, 1500);
     } catch (e: unknown) {
       setStatus("error");
@@ -174,28 +162,20 @@ function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: num
 
   return (
     <div className="space-y-3">
-      <p className="text-gray-400 text-sm">
-        This market uses Pyth oracle. Anyone can trigger resolution by submitting the latest price proof on-chain.
+      <p className="text-zinc-400 text-sm">
+        Anyone can trigger resolution by submitting the latest Pyth price proof.
       </p>
       <button
         onClick={handleResolve}
         disabled={status === "fetching" || status === "resolving"}
-        className="w-full py-4 rounded-xl font-bold text-base text-black bg-[#00FF94] hover:bg-[#00e085] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-        style={{ boxShadow: status === "idle" ? "0 0 20px #00FF9440" : "none" }}
+        className="w-full py-3.5 rounded-lg font-semibold text-sm text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-40 transition-colors"
       >
-        {(status === "fetching" || status === "resolving") ? (
-          <span className="flex items-center justify-center gap-2">
-            <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            {status === "fetching" ? "Fetching Pyth Price..." : "Resolving On-Chain..."}
-          </span>
-        ) : status === "done" ? (
-          "Market Resolved!"
-        ) : (
-          "Resolve with Live Pyth Price"
-        )}
+        {(status === "fetching" || status === "resolving")
+          ? (status === "fetching" ? "Fetching..." : "Resolving...")
+          : status === "done" ? "Resolved" : "Resolve with Pyth"}
       </button>
       {msg && (
-        <p className={`text-xs font-mono ${status === "error" ? "text-red-400" : status === "done" ? "text-[#00FF94]" : "text-gray-500"}`}>
+        <p className={`text-xs font-mono ${status === "error" ? "text-red-400" : status === "done" ? "text-[#00e87b]" : "text-zinc-500"}`}>
           {msg}
         </p>
       )}
@@ -203,7 +183,6 @@ function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: num
   );
 }
 
-// ---- Bet Form ----
 function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: number; onBetPlaced: () => void }) {
   const { address } = useAccount();
   const [amount, setAmount] = useState("");
@@ -266,16 +245,14 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
 
   if (step === "done") {
     return (
-      <div className="rounded-xl border border-[#00FF9440] bg-[#00FF9410] p-6 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-[#00FF94] font-bold text-lg mb-2">Bet Placed & Hidden!</p>
-        <p className="text-gray-400 text-sm mb-4">
+      <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-5 text-center">
+        <p className="text-[#00e87b] font-semibold mb-1">Bet placed</p>
+        <p className="text-zinc-400 text-sm mb-3">
           Your {selectedOutcome === Outcome.YES ? "YES" : "NO"} position is hidden on-chain.
-          Return after resolution to reveal and claim.
         </p>
-        <div className="bg-[#0A0A0A] rounded-lg p-3 text-xs font-mono text-gray-500">
-          Direction: <span className="bg-gray-800 px-2 py-0.5 rounded text-gray-600">████ hidden</span>
-        </div>
+        <p className="text-xs text-zinc-600 font-mono">
+          Direction: <span className="redacted px-2">████</span> hidden
+        </p>
       </div>
     );
   }
@@ -284,37 +261,35 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
 
   return (
     <div className="space-y-4">
-      {/* USDC balance */}
       {address && usdcBalance !== undefined && (
-        <div className="flex items-center justify-between text-xs font-mono">
-          <span className="text-gray-600">Your USDC balance</span>
+        <div className="flex items-center justify-between text-sm">
+          <span className="text-zinc-500">USDC balance</span>
           <div className="flex items-center gap-3">
-            <span className="text-gray-400">{formatUSDC(usdcBalance as bigint)}</span>
+            <span className="text-zinc-300 font-mono">{formatUSDC(usdcBalance as bigint)}</span>
             <USDCFaucet address={address} />
           </div>
         </div>
       )}
 
-      {/* Outcome Selection */}
       <div>
-        <label className="text-xs text-gray-500 uppercase tracking-wider font-mono mb-2 block">Your Position</label>
-        <div className="grid grid-cols-2 gap-3">
+        <label className="text-xs text-zinc-500 mb-2 block">Position</label>
+        <div className="grid grid-cols-2 gap-2">
           <button
             onClick={() => setSelectedOutcome(Outcome.YES)}
-            className={`py-4 rounded-xl border-2 font-bold text-lg transition-all ${
+            className={`py-3.5 rounded-lg border font-semibold transition-colors ${
               selectedOutcome === Outcome.YES
-                ? "border-green-500 bg-green-900/30 text-green-400"
-                : "border-gray-800 bg-[#111] text-gray-500 hover:border-green-900 hover:text-green-600"
+                ? "border-green-500/60 bg-green-500/10 text-green-400"
+                : "border-zinc-800 text-zinc-500 hover:border-zinc-700"
             }`}
           >
             YES
           </button>
           <button
             onClick={() => setSelectedOutcome(Outcome.NO)}
-            className={`py-4 rounded-xl border-2 font-bold text-lg transition-all ${
+            className={`py-3.5 rounded-lg border font-semibold transition-colors ${
               selectedOutcome === Outcome.NO
-                ? "border-red-500 bg-red-900/30 text-red-400"
-                : "border-gray-800 bg-[#111] text-gray-500 hover:border-red-900 hover:text-red-600"
+                ? "border-red-500/60 bg-red-500/10 text-red-400"
+                : "border-zinc-800 text-zinc-500 hover:border-zinc-700"
             }`}
           >
             NO
@@ -322,27 +297,21 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
         </div>
       </div>
 
-      {/* Amount */}
       <div>
-        <label className="text-xs text-gray-500 uppercase tracking-wider font-mono mb-2 block">Amount (USDC)</label>
-        <div className="relative">
-          <input
-            type="number"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder="0.00"
-            min="0"
-            step="1"
-            className="w-full bg-[#111] border border-gray-800 rounded-xl px-4 py-3.5 text-white font-mono text-lg focus:outline-none focus:border-[#00FF9460] pr-20"
-          />
-          <span className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 font-mono text-sm">USDC</span>
-        </div>
-        <div className="flex gap-2 mt-2">
+        <label className="text-xs text-zinc-500 mb-2 block">Amount (USDC)</label>
+        <input
+          type="number"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          placeholder="0.00"
+          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-4 py-3 text-white font-mono focus:outline-none focus:border-zinc-600"
+        />
+        <div className="flex gap-1.5 mt-2">
           {["10", "50", "100", "500"].map((v) => (
             <button
               key={v}
               onClick={() => setAmount(v)}
-              className="px-2.5 py-1 rounded text-xs font-mono text-gray-500 border border-gray-800 hover:border-[#00FF9440] hover:text-[#00FF94] transition-colors"
+              className="px-2.5 py-1 rounded text-xs text-zinc-500 border border-zinc-800 hover:border-zinc-600 hover:text-zinc-300 transition-colors"
             >
               ${v}
             </button>
@@ -350,57 +319,59 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
         </div>
       </div>
 
-      {/* Privacy note */}
       {selectedOutcome !== null && amount && (
-        <div className="rounded-lg border border-gray-800 bg-[#0D0D0D] p-3 text-xs space-y-1">
-          <div className="flex justify-between text-gray-500">
-            <span>On-chain visible:</span>
-            <span className="font-mono text-white">${amount} USDC</span>
+        <div className="rounded-lg border border-zinc-800/60 bg-zinc-900 p-3 text-sm space-y-1">
+          <div className="flex justify-between text-zinc-500">
+            <span>Visible on-chain</span>
+            <span className="text-white font-mono">${amount}</span>
           </div>
-          <div className="flex justify-between text-gray-500">
-            <span>On-chain hidden:</span>
-            <span className="font-mono text-[#00FF94]">██ direction ██</span>
+          <div className="flex justify-between text-zinc-500">
+            <span>Hidden on-chain</span>
+            <span className="text-[#00e87b] font-mono">direction</span>
           </div>
         </div>
       )}
 
       {!address ? (
         <div className="text-center py-2">
-          <p className="text-gray-500 text-sm mb-3">Connect wallet to bet</p>
           <ConnectButton />
         </div>
       ) : (
         <button
           onClick={handlePlaceBet}
           disabled={isBusy || !selectedOutcome || !amount || parseFloat(amount || "0") <= 0}
-          className="w-full py-4 rounded-xl font-bold text-base text-black bg-[#00FF94] hover:bg-[#00e085] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          style={{ boxShadow: isBusy ? "none" : "0 0 20px #00FF9440" }}
+          className="w-full py-3.5 rounded-lg font-semibold text-sm text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-40 transition-colors"
         >
-          {isBusy ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-              {step === "approving" ? "Approving USDC..." : "Placing Hidden Bet..."}
-            </span>
-          ) : needsApproval ? "Approve & Place Hidden Bet" : "Place Hidden Bet"}
+          {isBusy
+            ? (step === "approving" ? "Approving..." : "Placing bet...")
+            : needsApproval ? "Approve & Bet" : "Place Hidden Bet"}
         </button>
       )}
 
       {step === "error" && (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-xs text-red-400 font-mono">
-          {errorMsg || "Transaction failed"}
-        </div>
+        <p className="text-xs text-red-400">{errorMsg || "Transaction failed"}</p>
       )}
     </div>
   );
 }
 
-// ---- Reveal Form ----
 function RevealForm({ market, marketId, onRevealed }: { market: Market; marketId: number; onRevealed: () => void }) {
   const { address } = useAccount();
   const [step, setStep] = useState<"idle" | "revealing" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const { writeContractAsync } = useWriteContract();
   const savedBet = address ? loadCommitment(marketId, address) : null;
+
+  const { data: betData } = useReadContract({
+    address: SHADOW_ODDS_ADDRESS,
+    abi: ShadowOddsABI,
+    functionName: "bets",
+    args: address ? [BigInt(marketId), address] : undefined,
+    query: { enabled: !!address, refetchInterval: 3000 },
+  });
+
+  const onChainBet = betData as [string, bigint, number, boolean, boolean] | undefined;
+  const alreadyRevealed = onChainBet?.[3] ?? false;
 
   async function handleReveal() {
     if (!address || !savedBet) return;
@@ -417,27 +388,26 @@ function RevealForm({ market, marketId, onRevealed }: { market: Market; marketId
       onRevealed();
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Unknown error";
-      setErrorMsg(msg.includes("User rejected") ? "Transaction rejected" : msg.slice(0, 120));
+      setErrorMsg(msg.includes("User rejected") ? "Rejected" : msg.includes("AlreadyRevealed") ? "Already revealed" : msg.slice(0, 120));
       setStep("error");
     }
   }
 
   if (!savedBet) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-[#111] p-6 text-center">
-        <p className="text-gray-500 text-sm">No saved bet found for this wallet.</p>
-        <p className="text-gray-600 text-xs mt-2">Commitment data is stored in your browser localStorage.</p>
+      <div className="text-center py-4">
+        <p className="text-zinc-500 text-sm">No saved bet found for this wallet.</p>
+        <p className="text-zinc-600 text-xs mt-1">Commitment data is in localStorage.</p>
       </div>
     );
   }
 
-  if (step === "done") {
+  if (alreadyRevealed || step === "done") {
     return (
-      <div className="rounded-xl border border-purple-700/40 bg-purple-900/10 p-6 text-center">
-        <div className="text-4xl mb-3">✅</div>
-        <p className="text-purple-300 font-bold text-lg mb-2">Bet Revealed!</p>
-        <p className="text-gray-400 text-sm">
-          Your {outcomeLabel(savedBet.outcome)} position revealed. If you won, claim below.
+      <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-4 text-center">
+        <p className="text-[#836EF9] font-semibold mb-1">Bet revealed</p>
+        <p className="text-zinc-400 text-sm">
+          Your {outcomeLabel(savedBet.outcome)} position is public now.
         </p>
       </div>
     );
@@ -445,16 +415,16 @@ function RevealForm({ market, marketId, onRevealed }: { market: Market; marketId
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-gray-800 bg-[#0D0D0D] p-4 space-y-3">
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-gray-500 font-mono">Your position</span>
-          <span className={`text-sm font-bold px-2 py-0.5 rounded ${savedBet.outcome === Outcome.YES ? "text-green-400 bg-green-900/30" : "text-red-400 bg-red-900/30"}`}>
+      <div className="rounded-lg border border-zinc-800/60 bg-zinc-900 p-3 space-y-2 text-sm">
+        <div className="flex justify-between">
+          <span className="text-zinc-500">Position</span>
+          <span className={savedBet.outcome === Outcome.YES ? "text-green-400 font-medium" : "text-red-400 font-medium"}>
             {outcomeLabel(savedBet.outcome)}
           </span>
         </div>
         <div className="flex justify-between">
-          <span className="text-xs text-gray-500 font-mono">Amount</span>
-          <span className="text-sm font-mono text-white">{formatUSDC(savedBet.amount)}</span>
+          <span className="text-zinc-500">Amount</span>
+          <span className="text-white font-mono">{formatUSDC(savedBet.amount)}</span>
         </div>
       </div>
 
@@ -462,28 +432,17 @@ function RevealForm({ market, marketId, onRevealed }: { market: Market; marketId
         <button
           onClick={handleReveal}
           disabled={step === "revealing"}
-          className="w-full py-4 rounded-xl font-bold text-base text-white bg-[#7C3AED] hover:bg-[#6d28d9] disabled:opacity-40 transition-all"
-          style={{ boxShadow: step === "idle" ? "0 0 20px #7C3AED40" : "none" }}
+          className="w-full py-3.5 rounded-lg font-semibold text-sm text-white bg-[#836EF9] hover:bg-[#7360e0] disabled:opacity-40 transition-colors"
         >
-          {step === "revealing" ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Revealing...
-            </span>
-          ) : "Reveal My Bet"}
+          {step === "revealing" ? "Revealing..." : "Reveal My Bet"}
         </button>
       )}
 
-      {step === "error" && (
-        <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-xs text-red-400 font-mono">
-          {errorMsg}
-        </div>
-      )}
+      {step === "error" && <p className="text-xs text-red-400">{errorMsg}</p>}
     </div>
   );
 }
 
-// ---- Claim Form ----
 function ClaimForm({ marketId, market, onClaimed }: { marketId: number; market: Market; onClaimed: () => void }) {
   const { address } = useAccount();
   const [step, setStep] = useState<"idle" | "claiming" | "done" | "error">("idle");
@@ -525,126 +484,86 @@ function ClaimForm({ marketId, market, onClaimed }: { marketId: number; market: 
 
   if (step === "done") {
     return (
-      <div className="rounded-xl border border-[#00FF9440] bg-[#00FF9410] p-6 text-center">
-        <div className="text-4xl mb-3">💰</div>
-        <p className="text-[#00FF94] font-bold text-lg">Winnings Claimed!</p>
-        <p className="text-gray-400 text-sm mt-2">USDC sent to your public wallet.</p>
-        <div className="mt-4 pt-4 border-t border-[#00FF9430]">
-          <p className="text-[#7C3AED] text-xs font-bold mb-1">Want full privacy?</p>
-          <p className="text-gray-500 text-xs">
-            Shield your winnings into your Unlink private account below — break the link between your win and your wallet.
-          </p>
-        </div>
+      <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-5 text-center">
+        <p className="text-[#00e87b] font-semibold mb-1">Winnings claimed</p>
+        <p className="text-zinc-400 text-sm">USDC sent to your wallet.</p>
+        <p className="text-zinc-600 text-xs mt-3">
+          Shield your winnings below to break the wallet-to-win link.
+        </p>
       </div>
     );
   }
-  if (claimed) return <div className="rounded-xl border border-gray-800 bg-[#111] p-6 text-center"><p className="text-gray-400">Already claimed.</p></div>;
-  if (!revealed) return <div className="rounded-xl border border-yellow-800/40 bg-yellow-900/10 p-6 text-center"><p className="text-yellow-400 text-sm">Reveal your bet first.</p></div>;
-  if (!isWinner) return <div className="rounded-xl border border-red-800/40 bg-red-900/10 p-6 text-center"><p className="text-red-400 text-sm">You bet {outcomeLabel(betOutcome!)} — market resolved {outcomeLabel(market.result)}. No winnings.</p></div>;
+  if (claimed) return <p className="text-zinc-500 text-center py-4">Already claimed.</p>;
+  if (!revealed) return <p className="text-amber-400 text-sm text-center py-4">Reveal your bet first.</p>;
+  if (!isWinner) return <p className="text-zinc-500 text-sm text-center py-4">You bet {outcomeLabel(betOutcome!)} — market resolved {outcomeLabel(market.result)}.</p>;
 
   return (
     <div className="space-y-4">
-      <div className="rounded-xl border border-[#00FF9440] bg-[#00FF9410] p-4 text-center">
-        <p className="text-xs text-gray-500 font-mono mb-1">You won!</p>
-        <p className="text-2xl font-bold text-[#00FF94]">{outcomeLabel(betOutcome!)}</p>
-        <p className="text-xs text-gray-500 mt-1">1% protocol fee on profits</p>
+      <div className="rounded-lg border border-[#00e87b]/20 bg-[#00e87b]/5 p-4 text-center">
+        <p className="text-xs text-zinc-500 mb-1">You won</p>
+        <p className="text-xl font-bold text-[#00e87b]">{outcomeLabel(betOutcome!)}</p>
+        <p className="text-xs text-zinc-600 mt-1">1% protocol fee on profits</p>
       </div>
       {!address ? <ConnectButton /> : (
         <button
           onClick={handleClaim}
           disabled={step === "claiming"}
-          className="w-full py-4 rounded-xl font-bold text-base text-black bg-[#00FF94] hover:bg-[#00e085] disabled:opacity-40 transition-all"
-          style={{ boxShadow: "0 0 20px #00FF9440" }}
+          className="w-full py-3.5 rounded-lg font-semibold text-sm text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-40 transition-colors"
         >
-          {step === "claiming" ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-              Claiming...
-            </span>
-          ) : "Claim Winnings"}
+          {step === "claiming" ? "Claiming..." : "Claim Winnings"}
         </button>
       )}
-      {step === "error" && <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3 text-xs text-red-400 font-mono">{errorMsg}</div>}
+      {step === "error" && <p className="text-xs text-red-400">{errorMsg}</p>}
     </div>
   );
 }
 
-// ---- Privacy Panel ----
 function PrivacyPanel({ market }: { market: Market }) {
   return (
-    <div className="rounded-xl border border-gray-800 bg-[#111] p-5">
-      <h3 className="text-white font-bold mb-4 flex items-center gap-2 text-sm">
-        <span className="text-[#00FF94]">🔒</span> What&apos;s Hidden?
-      </h3>
-      <div className="space-y-3">
+    <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-5">
+      <h3 className="text-white font-semibold mb-3 text-sm">Privacy model</h3>
+      <div className="space-y-2.5">
         {[
-          { dot: "red", label: "Amount locked", sub: "Visible — required for settlement" },
-          { dot: "green", label: "YES/NO direction", sub: "Hidden via keccak256 commit-reveal" },
-          { dot: "green", label: "Your secret key", sub: "Never leaves your browser" },
+          { hidden: false, label: "Amount locked", sub: "Visible — needed for settlement" },
+          { hidden: true, label: "YES/NO direction", sub: "Hidden via commit-reveal" },
+          { hidden: true, label: "Your secret key", sub: "Never leaves your browser" },
         ].map((item) => (
-          <div key={item.label} className="flex items-start gap-3">
-            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${item.dot === "green" ? "bg-[#00FF94]" : "bg-red-400"}`} />
+          <div key={item.label} className="flex items-start gap-2.5">
+            <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${item.hidden ? "bg-[#00e87b]" : "bg-red-400"}`} />
             <div>
-              <p className="text-sm text-gray-300">{item.label}</p>
-              <p className="text-xs text-gray-600">{item.sub}</p>
+              <p className="text-sm text-zinc-300">{item.label}</p>
+              <p className="text-xs text-zinc-600">{item.sub}</p>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Block explorer comparison */}
-      <div className="mt-5 pt-5 border-t border-gray-800">
-        <p className="text-xs text-gray-600 mb-3 font-mono uppercase tracking-wider">Block Explorer</p>
-        <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-          <div className="rounded-lg border border-red-900/40 bg-red-950/10 p-3">
-            <p className="text-red-400 font-bold mb-2">Polymarket</p>
-            <p className="text-gray-500">bet(YES, $500)</p>
-            <p className="text-gray-500">0xabc...</p>
-            <p className="text-gray-700 text-[10px] mt-1">visible to all</p>
-          </div>
-          <div className="rounded-lg border border-[#00FF9430] bg-[#00FF9408] p-3">
-            <p className="text-[#00FF94] font-bold mb-2">ShadowOdds</p>
-            <p className="text-gray-300">bet($500)</p>
-            <p className="text-gray-600">dir: <span className="bg-gray-800 px-1 rounded">███</span></p>
-            <p className="text-gray-700 text-[10px] mt-1">direction hidden</p>
-          </div>
-        </div>
-      </div>
-
       {/* Pool breakdown */}
-      <div className="mt-4 pt-4 border-t border-gray-800">
-        <h4 className="text-white font-bold mb-3 text-sm">Pool Breakdown</h4>
-        <div className="space-y-2">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-500">YES pool</span>
-            {market.resolved ? (
-              <span className="font-mono text-green-400 text-sm">{formatUSDC(market.yesPool)}</span>
-            ) : (
-              <span className="text-gray-700 font-mono text-sm bg-gray-800 px-2 py-0.5 rounded">████████</span>
-            )}
+      <div className="mt-4 pt-4 border-t border-zinc-800/40">
+        <p className="text-xs text-zinc-500 mb-2">Pool breakdown</p>
+        <div className="space-y-1.5 text-sm">
+          <div className="flex justify-between">
+            <span className="text-zinc-500">YES pool</span>
+            {market.resolved
+              ? <span className="font-mono text-green-400">{formatUSDC(market.yesPool)}</span>
+              : <span className="redacted px-2 text-xs">████</span>}
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-gray-500">NO pool</span>
-            {market.resolved ? (
-              <span className="font-mono text-red-400 text-sm">{formatUSDC(market.noPool)}</span>
-            ) : (
-              <span className="text-gray-700 font-mono text-sm bg-gray-800 px-2 py-0.5 rounded">████████</span>
-            )}
+          <div className="flex justify-between">
+            <span className="text-zinc-500">NO pool</span>
+            {market.resolved
+              ? <span className="font-mono text-red-400">{formatUSDC(market.noPool)}</span>
+              : <span className="redacted px-2 text-xs">████</span>}
           </div>
-          <div className="flex justify-between items-center border-t border-gray-800 pt-2">
-            <span className="text-sm text-gray-400 font-medium">Total</span>
-            <span className="font-mono text-[#00FF94] font-bold text-sm">{formatUSDC(market.totalPool)}</span>
+          <div className="flex justify-between pt-1.5 border-t border-zinc-800/40">
+            <span className="text-zinc-400">Total</span>
+            <span className="font-mono text-[#00e87b] font-medium">{formatUSDC(market.totalPool)}</span>
           </div>
         </div>
-        {!market.resolved && (
-          <p className="text-xs text-gray-700 font-mono mt-2">YES/NO split hidden until resolved</p>
-        )}
       </div>
     </div>
   );
 }
 
-// ---- Main Market Page ----
 export default function MarketPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const marketId = parseInt(id, 10);
@@ -655,10 +574,9 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
     abi: ShadowOddsABI,
     functionName: "markets",
     args: [BigInt(marketId)],
-    query: { refetchInterval: 4000 }, // auto-refresh every 4s
+    query: { refetchInterval: 4000 },
   });
 
-  // Extract feedId from raw data before market is parsed (hooks must be unconditional)
   const rawFeedId = (data as unknown[])?.[6] as string ?? "";
   const { price: livePrice, loading: livePriceLoading } = useLivePrice(rawFeedId);
   const assetInfo = feedInfo(rawFeedId);
@@ -670,10 +588,10 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
-        <div className="flex items-center gap-3 text-gray-500">
-          <span className="w-5 h-5 border-2 border-[#00FF94] border-t-transparent rounded-full animate-spin" />
-          Loading market...
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
+        <div className="flex items-center gap-3 text-zinc-500 text-sm">
+          <span className="w-4 h-4 border-2 border-zinc-600 border-t-transparent rounded-full spinner" />
+          Loading...
         </div>
       </div>
     );
@@ -681,10 +599,10 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
 
   if (isError || !data) {
     return (
-      <div className="min-h-screen bg-[#0A0A0A] flex items-center justify-center">
+      <div className="min-h-screen bg-[#09090b] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-400 text-lg mb-4">Market not found</p>
-          <Link href="/" className="text-[#00FF94] hover:underline text-sm">← Back to markets</Link>
+          <p className="text-zinc-400 mb-3">Market not found</p>
+          <Link href="/" className="text-[#00e87b] text-sm hover:underline">Back to markets</Link>
         </div>
       </div>
     );
@@ -713,84 +631,78 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
   const thresholdUSD = pythPriceToUSD(market.priceThreshold);
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A]">
-      <header className="sticky top-0 z-50 border-b border-gray-900 bg-[#0A0A0A]/90 backdrop-blur-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link href="/" className="text-gray-500 hover:text-white transition-colors flex items-center gap-2 text-sm">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <div className="min-h-screen bg-[#09090b]">
+      <header className="sticky top-0 z-50 border-b border-zinc-800/50 bg-[#09090b]/80 backdrop-blur-md">
+        <div className="max-w-6xl mx-auto px-5 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link href="/" className="text-zinc-500 hover:text-white transition-colors text-sm flex items-center gap-1.5">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               Markets
             </Link>
-            <span className="text-gray-800">/</span>
-            <span className="text-gray-400 font-mono text-sm">#{marketId}</span>
+            <span className="text-zinc-800">/</span>
+            <span className="text-zinc-400 text-sm">#{marketId}</span>
           </div>
           <ConnectButton />
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left — Market info + action */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Question */}
+      <div className="max-w-6xl mx-auto px-5 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Main */}
+          <div className="lg:col-span-2 space-y-5">
             <div>
-              <div className="flex items-center gap-3 mb-3">
+              <div className="flex items-center gap-2 mb-3">
                 <StatusBadge status={status} />
                 {isPriceFeed && (
-                  <span className="text-xs font-mono text-[#7C3AED] px-2 py-0.5 rounded border border-[#7C3AED40] bg-[#7C3AED10]">
-                    PYTH ORACLE
+                  <span className="text-xs text-[#836EF9] px-2 py-0.5 rounded-md bg-[#836EF9]/10">
+                    Pyth Oracle
                   </span>
                 )}
               </div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white leading-snug">{market.question}</h1>
+              <h1 className="text-2xl font-semibold text-white leading-snug">{market.question}</h1>
             </div>
 
-            {/* Stats row */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="rounded-xl border border-gray-800 bg-[#111] p-4">
-                <p className="text-xs text-gray-500 font-mono mb-1">Total Pool</p>
-                <p className="text-[#00FF94] font-bold text-xl font-mono">{formatUSDC(market.totalPool)}</p>
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4">
+                <p className="text-xs text-zinc-500 mb-1">Total Pool</p>
+                <p className="text-[#00e87b] font-bold text-lg font-mono">{formatUSDC(market.totalPool)}</p>
               </div>
-              <div className="rounded-xl border border-gray-800 bg-[#111] p-4">
-                <p className="text-xs text-gray-500 font-mono mb-1">
-                  {status === "betting" ? "Closes In" : "Closed"}
-                </p>
-                <p className={`font-bold text-lg font-mono ${status === "betting" ? "text-white" : "text-gray-500"}`}>
-                  {timeRemaining(market.bettingDeadline)}
-                </p>
+              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4">
+                <p className="text-xs text-zinc-500 mb-1">{status === "betting" ? "Closes in" : "Closed"}</p>
+                <p className="text-white font-bold text-lg font-mono">{timeRemaining(market.bettingDeadline)}</p>
               </div>
-              <div className="rounded-xl border border-gray-800 bg-[#111] p-4">
-                <p className="text-xs text-gray-500 font-mono mb-1">Reveal Window</p>
-                <p className="font-bold text-lg font-mono text-white">{timeRemaining(market.revealDeadline)}</p>
+              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4">
+                <p className="text-xs text-zinc-500 mb-1">Reveal window</p>
+                <p className="text-white font-bold text-lg font-mono">{timeRemaining(market.revealDeadline)}</p>
               </div>
             </div>
 
-            {/* Live ETH price for PRICE_FEED markets */}
+            {/* Live price */}
             {isPriceFeed && (
-              <div className="rounded-xl border border-[#7C3AED40] bg-[#7C3AED08] p-5">
+              <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-5">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-xs text-gray-500 font-mono mb-1 flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#7C3AED] animate-pulse" />
-                      Live {assetInfo.symbol}/USD (Pyth Hermes)
+                    <p className="text-xs text-zinc-500 mb-1 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#836EF9] pulse-live" />
+                      {assetInfo.symbol}/USD — Pyth
                     </p>
                     {livePriceLoading ? (
-                      <div className="h-8 w-36 bg-gray-800 rounded animate-pulse" />
+                      <div className="h-7 w-32 bg-zinc-800 rounded shimmer" />
                     ) : (
                       <p className="text-2xl font-bold font-mono text-white">
                         ${livePrice?.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) ?? "—"}
                       </p>
                     )}
-                    <p className="text-xs text-gray-600 mt-1">Updates every 400ms via Pyth</p>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-gray-500 font-mono mb-1">Threshold (YES if above)</p>
-                    <p className="text-xl font-bold font-mono text-[#7C3AED]">{thresholdUSD}</p>
+                    <p className="text-xs text-zinc-500 mb-1">Threshold</p>
+                    <p className="text-lg font-bold font-mono text-[#836EF9]">{thresholdUSD}</p>
                     {livePrice && (
-                      <p className={`text-xs mt-1 font-mono font-bold ${livePrice >= Number(market.priceThreshold) / 1e8 ? "text-green-400" : "text-red-400"}`}>
-                        {livePrice >= Number(market.priceThreshold) / 1e8 ? "✓ Would resolve YES" : "✗ Would resolve NO"}
+                      <p className={`text-xs mt-0.5 font-medium ${livePrice >= Number(market.priceThreshold) / 1e8 ? "text-green-400" : "text-red-400"}`}>
+                        {livePrice >= Number(market.priceThreshold) / 1e8 ? "Would resolve YES" : "Would resolve NO"}
                       </p>
                     )}
                   </div>
@@ -798,99 +710,80 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
               </div>
             )}
 
-            {/* Resolved result banner */}
+            {/* Resolved banner */}
             {market.resolved && (
-              <div className={`rounded-xl border p-5 flex items-center gap-4 ${
-                market.result === Outcome.YES ? "border-green-700/40 bg-green-900/10" : "border-red-700/40 bg-red-900/10"
+              <div className={`rounded-lg border p-5 flex items-center gap-4 ${
+                market.result === Outcome.YES ? "border-green-500/20 bg-green-500/5" : "border-red-500/20 bg-red-500/5"
               }`}>
-                <span className="text-4xl">{market.result === Outcome.YES ? "✅" : "❌"}</span>
                 <div>
-                  <p className="text-sm text-gray-400">Market resolved</p>
-                  <p className={`text-3xl font-black ${market.result === Outcome.YES ? "text-green-400" : "text-red-400"}`}>
+                  <p className="text-sm text-zinc-400">Resolved</p>
+                  <p className={`text-3xl font-bold ${market.result === Outcome.YES ? "text-green-400" : "text-red-400"}`}>
                     {outcomeLabel(market.result)}
                   </p>
-                  {isPriceFeed && livePrice && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {assetInfo.symbol} was ${livePrice.toFixed(2)} vs {thresholdUSD} threshold
-                    </p>
-                  )}
                 </div>
               </div>
             )}
 
-            {/* Action Panel */}
-            <div className="rounded-xl border border-gray-800 bg-[#111] p-6">
-              <h2 className="text-white font-bold text-base mb-5">
-                {status === "betting" && "Place Your Hidden Bet"}
-                {status === "pending" && (isPriceFeed ? "Resolve via Pyth Oracle" : "Waiting for Admin Resolution")}
-                {status === "reveal" && "Reveal Your Bet"}
-                {status === "resolved" && "Claim Your Winnings"}
+            {/* Action */}
+            <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-6">
+              <h2 className="text-white font-semibold mb-4">
+                {status === "betting" && "Place your bet"}
+                {status === "pending" && (isPriceFeed ? "Resolve via Pyth" : "Waiting for resolution")}
+                {status === "reveal" && "Reveal & Claim"}
+                {status === "resolved" && "Claim winnings"}
               </h2>
 
-              {status === "betting" && (
-                <BetForm market={market} marketId={marketId} onBetPlaced={triggerRefresh} />
-              )}
-
-              {status === "pending" && isPriceFeed && (
-                <ResolveWithPythButton key={refreshKey} marketId={marketId} feedId={market.priceFeedId} onResolved={triggerRefresh} />
-              )}
-
+              {status === "betting" && <BetForm market={market} marketId={marketId} onBetPlaced={triggerRefresh} />}
+              {status === "pending" && isPriceFeed && <ResolveWithPythButton key={refreshKey} marketId={marketId} feedId={market.priceFeedId} onResolved={triggerRefresh} />}
               {status === "pending" && !isPriceFeed && (
-                <div className="text-center py-8">
-                  <div className="text-4xl mb-4">⏳</div>
-                  <p className="text-gray-400 mb-2">Waiting for admin to resolve.</p>
-                  <p className="text-gray-600 text-sm">
-                    Resolution opens: {new Date(Number(market.resolutionTime) * 1000).toLocaleString()}
-                  </p>
+                <p className="text-zinc-500 text-center py-6">Waiting for admin resolution.</p>
+              )}
+              {status === "reveal" && (
+                <div className="space-y-4">
+                  <RevealForm market={market} marketId={marketId} onRevealed={triggerRefresh} />
+                  <ClaimForm key={refreshKey} marketId={marketId} market={market} onClaimed={triggerRefresh} />
                 </div>
               )}
-
-              {status === "reveal" && (
-                <RevealForm market={market} marketId={marketId} onRevealed={triggerRefresh} />
-              )}
-
-              {status === "resolved" && (
-                <ClaimForm key={refreshKey} marketId={marketId} market={market} onClaimed={triggerRefresh} />
-              )}
+              {status === "resolved" && <ClaimForm key={refreshKey} marketId={marketId} market={market} onClaimed={triggerRefresh} />}
             </div>
 
-            {/* Market details */}
-            <div className="rounded-xl border border-gray-800 bg-[#111] p-5">
-              <h3 className="text-white font-bold mb-4 text-sm">Market Details</h3>
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+            {/* Details */}
+            <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-5">
+              <h3 className="text-white font-semibold mb-3 text-sm">Details</h3>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                 {[
-                  { label: "Oracle", value: isPriceFeed ? "Pyth (trustless)" : "Admin key" },
-                  { label: "Settlement", value: "USDC (6 decimals)" },
-                  { label: "Privacy", value: "keccak256 commit-reveal" },
-                  { label: "Network", value: "Monad testnet (10143)" },
+                  { label: "Oracle", value: isPriceFeed ? "Pyth (trustless)" : "Admin" },
+                  { label: "Settlement", value: "USDC" },
+                  { label: "Privacy", value: "Commit-reveal" },
+                  { label: "Network", value: "Monad testnet" },
                   { label: "Contract", value: `${SHADOW_ODDS_ADDRESS?.slice(0, 10)}...` },
-                  { label: "Protocol fee", value: "1% on profits" },
+                  { label: "Fee", value: "1% on profits" },
                 ].map(({ label, value }) => (
-                  <div key={label} className="flex justify-between items-center py-1.5 border-b border-gray-900">
-                    <span className="text-gray-500">{label}</span>
-                    <span className="text-gray-300">{value}</span>
+                  <div key={label} className="flex justify-between py-1 border-b border-zinc-800/30">
+                    <span className="text-zinc-500">{label}</span>
+                    <span className="text-zinc-300 font-mono text-xs">{value}</span>
                   </div>
                 ))}
               </div>
-              <div className="mt-3">
-                <a
-                  href={`https://testnet.monadexplorer.com/address/${SHADOW_ODDS_ADDRESS}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-[#00FF94] hover:underline font-mono"
-                >
-                  View on Monad Explorer →
-                </a>
-              </div>
+              <a
+                href={`https://testnet.monadexplorer.com/address/${SHADOW_ODDS_ADDRESS}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block mt-3 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                View on Explorer →
+              </a>
             </div>
           </div>
 
-          {/* Right — Privacy Score + Shadow Receipt + Privacy Panel + Unlink Wallet */}
-          <div className="space-y-6">
+          {/* Sidebar */}
+          <div className="space-y-4">
             <PrivacyScore marketId={marketId} />
             <ShadowReceipt marketId={marketId} market={market} />
             <PrivacyPanel market={market} />
+            <PrivateAdapter marketId={marketId} bettingOpen={status === "betting"} marketResolved={market.resolved} marketResult={market.result} />
             <UnlinkWallet />
+            <PrivacyTimeline />
           </div>
         </div>
       </div>

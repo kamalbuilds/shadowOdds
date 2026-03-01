@@ -34,17 +34,9 @@ export function ConnectButton() {
       <button
         onClick={() => connect({ connector: injected() })}
         disabled={isConnecting}
-        className="relative px-5 py-2.5 rounded-lg font-semibold text-sm text-black bg-[#00FF94] hover:bg-[#00e085] disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
-        style={{ boxShadow: "0 0 20px #00FF9440" }}
+        className="px-4 py-2 rounded-lg font-medium text-sm text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-50 transition-colors"
       >
-        {isConnecting ? (
-          <span className="flex items-center gap-2">
-            <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-            Connecting...
-          </span>
-        ) : (
-          "Connect Wallet"
-        )}
+        {isConnecting ? "Connecting..." : "Connect Wallet"}
       </button>
     );
   }
@@ -54,17 +46,9 @@ export function ConnectButton() {
       <button
         onClick={() => switchChain({ chainId: monadTestnet.id })}
         disabled={isSwitching}
-        className="px-5 py-2.5 rounded-lg font-semibold text-sm text-white bg-[#7C3AED] hover:bg-[#6d28d9] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-        style={{ boxShadow: "0 0 20px #7C3AED40" }}
+        className="px-4 py-2 rounded-lg font-medium text-sm text-white bg-[#836EF9] hover:bg-[#7360e0] disabled:opacity-50 transition-colors"
       >
-        {isSwitching ? (
-          <span className="flex items-center gap-2">
-            <span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            Switching...
-          </span>
-        ) : (
-          "Switch to Monad Testnet"
-        )}
+        {isSwitching ? "Switching..." : "Switch to Monad"}
       </button>
     );
   }
@@ -73,36 +57,30 @@ export function ConnectButton() {
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setDropdownOpen(!dropdownOpen)}
-        className="flex items-center gap-2.5 px-4 py-2.5 rounded-lg border border-gray-700 bg-[#111] hover:border-[#00FF9460] hover:bg-[#111] transition-all text-sm"
+        className="flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-800 hover:border-zinc-700 transition-colors text-sm"
       >
-        <span className="w-2 h-2 rounded-full bg-[#00FF94] pulse-green" />
-        <span className="font-mono text-[#00FF94] font-medium">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#00e87b]" />
+        <span className="font-mono text-zinc-300 text-[13px]">
           {truncateAddress(address!)}
         </span>
-        <span className="text-gray-500 text-xs">{chain?.name ?? "Unknown"}</span>
         <svg
-          className={`w-3 h-3 text-gray-500 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+          className={`w-3 h-3 text-zinc-600 transition-transform ${dropdownOpen ? "rotate-180" : ""}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
         >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-800 bg-[#111] shadow-2xl z-50 overflow-hidden">
-          <div className="p-3 border-b border-gray-800">
-            <p className="text-xs text-gray-500 mb-1">Connected to</p>
-            <p className="font-mono text-xs text-[#00FF94]">{address}</p>
+        <div className="absolute right-0 mt-1.5 w-52 rounded-lg border border-zinc-800 bg-zinc-900 shadow-xl z-50 overflow-hidden">
+          <div className="p-3 border-b border-zinc-800/60">
+            <p className="text-[11px] text-zinc-500 mb-1">Connected</p>
+            <p className="font-mono text-xs text-zinc-300 break-all">{address}</p>
           </div>
           <div className="p-1">
             <button
-              onClick={() => {
-                disconnect();
-                setDropdownOpen(false);
-              }}
-              className="w-full text-left px-3 py-2.5 text-sm text-red-400 hover:bg-red-950/30 rounded-lg transition-colors"
+              onClick={() => { disconnect(); setDropdownOpen(false); }}
+              className="w-full text-left px-3 py-2 text-sm text-red-400 hover:bg-red-400/5 rounded-md transition-colors"
             >
               Disconnect
             </button>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useUnlink, useUnlinkBalance, useTransfer, useWithdraw, useBurner } from "@unlink-xyz/react";
+import { useUnlink, useUnlinkBalance, useSend, useWithdraw, useBurner } from "@unlink-xyz/react";
 import { useAccount, useWriteContract, useReadContract, useSendTransaction } from "wagmi";
 import { parseAbi, formatUnits, parseUnits } from "viem";
 import { USDC_ADDRESS, UNLINK_POOL_ADDRESS, SHADOW_ODDS_ADDRESS } from "@/lib/wagmi";
@@ -14,6 +14,15 @@ const ERC20_ABI = parseAbi([
 
 type Tab = "shield" | "transfer" | "burner";
 
+function parseRelayError(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e);
+  if (msg.includes("404") || msg.includes("server response")) {
+    return "Unlink relay service unavailable on Monad testnet. Shield (deposit) works — relay ops (withdraw, transfer, fund) pending activation.";
+  }
+  if (msg.includes("User rejected")) return "Transaction rejected";
+  return msg.slice(0, 150);
+}
+
 export function UnlinkWallet() {
   const { address } = useAccount();
   const {
@@ -24,12 +33,12 @@ export function UnlinkWallet() {
     createWallet,
     importWallet,
     createAccount,
-    requestDeposit,
+    deposit,
   } = useUnlink();
 
   const { balance: privateUsdcBalance } = useUnlinkBalance(USDC_ADDRESS);
-  const { execute: transfer, isPending: transferPending, error: transferError } = useTransfer();
-  const { execute: withdraw, isPending: withdrawPending } = useWithdraw();
+  const { send: transfer, isPending: transferPending, error: transferError } = useSend();
+  const { withdraw, isPending: withdrawPending } = useWithdraw();
   const {
     burners,
     createBurner,
@@ -124,16 +133,16 @@ export function UnlinkWallet() {
       }
 
       setStep("depositing");
-      const deposit = await requestDeposit([{
+      const depositResult = await deposit([{
         token: USDC_ADDRESS,
         amount: amountBigInt,
         depositor: address,
       }]);
 
       await sendTransactionAsync({
-        to: deposit.to as `0x${string}`,
-        data: deposit.calldata as `0x${string}`,
-        value: deposit.value ?? 0n,
+        to: depositResult.to as `0x${string}`,
+        data: depositResult.calldata as `0x${string}`,
+        value: depositResult.value ?? 0n,
       });
 
       setStep("done");
@@ -160,7 +169,7 @@ export function UnlinkWallet() {
       setWithdrawAddr("");
     } catch (e) {
       setWStep("error");
-      setWError(e instanceof Error ? e.message.slice(0, 120) : "Withdraw failed");
+      setWError(parseRelayError(e));
     }
   }
 
@@ -179,7 +188,7 @@ export function UnlinkWallet() {
       setTransferAmount("");
     } catch (e) {
       setTStep("error");
-      setTError(e instanceof Error ? e.message.slice(0, 120) : "Transfer failed");
+      setTError(parseRelayError(e));
     }
   }
 
@@ -204,7 +213,6 @@ export function UnlinkWallet() {
         index: activeBurnerIdx,
         params: { token: USDC_ADDRESS, amount: parseUnits(burnerFundAmt, 6) },
       });
-      // Refresh burner balance
       const activeBurner = burners[activeBurnerIdx];
       if (activeBurner) {
         const bal = await getTokenBalance(activeBurner.address, USDC_ADDRESS);
@@ -214,7 +222,7 @@ export function UnlinkWallet() {
       setBurnerFundAmt("");
     } catch (e) {
       setBurnerStep("error");
-      setBurnerError(e instanceof Error ? e.message.slice(0, 120) : "Fund failed");
+      setBurnerError(parseRelayError(e));
     }
   }
 
@@ -230,7 +238,7 @@ export function UnlinkWallet() {
       setBurnerStep("done");
     } catch (e) {
       setBurnerStep("error");
-      setBurnerError(e instanceof Error ? e.message.slice(0, 120) : "Sweep failed");
+      setBurnerError(parseRelayError(e));
     }
   }
 
@@ -244,28 +252,25 @@ export function UnlinkWallet() {
 
   if (!ready) {
     return (
-      <div className="rounded-xl border border-gray-800 bg-[#111] p-5 animate-pulse">
-        <div className="h-4 w-40 bg-gray-800 rounded mb-3" />
-        <div className="h-8 w-full bg-gray-800 rounded" />
+      <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-5 animate-pulse">
+        <div className="h-4 w-40 bg-zinc-800 rounded mb-3" />
+        <div className="h-8 w-full bg-zinc-800 rounded" />
       </div>
     );
   }
 
-  // No wallet yet — creation UI
   if (!walletExists) {
     return (
-      <div className="rounded-xl border border-[#7C3AED40] bg-[#7C3AED08] p-5">
-        <h3 className="text-white font-bold mb-2 text-sm flex items-center gap-2">
-          <span className="text-[#7C3AED]">&#x1f6e1;</span> Private Account (Unlink)
-        </h3>
-        <p className="text-gray-400 text-xs mb-4">
+      <div className="rounded-xl border border-[#836EF9]/20 bg-[#836EF9]/5 p-5">
+        <h3 className="text-white font-semibold mb-2 text-sm">Private Account (Unlink)</h3>
+        <p className="text-zinc-400 text-xs mb-4">
           Shield your winnings with zero-knowledge privacy. Create an Unlink wallet to deposit USDC into a private account.
         </p>
 
         {savedMnemonic && (
-          <div className="mb-4 rounded-lg border border-yellow-800/50 bg-yellow-900/10 p-3">
-            <p className="text-yellow-400 text-xs font-bold mb-1">Save your mnemonic!</p>
-            <p className="text-xs font-mono text-gray-300 break-all select-all">{savedMnemonic}</p>
+          <div className="mb-4 rounded-lg border border-amber-800/50 bg-amber-900/10 p-3">
+            <p className="text-amber-400 text-xs font-medium mb-1">Save your mnemonic!</p>
+            <p className="text-xs font-mono text-zinc-300 break-all select-all">{savedMnemonic}</p>
           </div>
         )}
 
@@ -273,7 +278,7 @@ export function UnlinkWallet() {
           <button
             onClick={handleCreateWallet}
             disabled={busy}
-            className="w-full py-3 rounded-xl font-bold text-sm text-white bg-[#7C3AED] hover:bg-[#6d28d9] disabled:opacity-40 transition-all"
+            className="w-full py-2.5 rounded-lg font-medium text-sm text-white bg-[#836EF9] hover:bg-[#7360e0] disabled:opacity-40 transition-colors"
           >
             {busy ? "Creating..." : "Create Private Wallet"}
           </button>
@@ -281,7 +286,7 @@ export function UnlinkWallet() {
           {!showImport ? (
             <button
               onClick={() => setShowImport(true)}
-              className="w-full text-xs text-gray-500 hover:text-[#7C3AED] transition-colors"
+              className="w-full text-xs text-zinc-500 hover:text-[#836EF9] transition-colors"
             >
               Import existing wallet
             </button>
@@ -291,12 +296,12 @@ export function UnlinkWallet() {
                 value={mnemonicInput}
                 onChange={(e) => setMnemonicInput(e.target.value)}
                 placeholder="Enter your mnemonic..."
-                className="w-full bg-[#0A0A0A] border border-gray-800 rounded-lg p-2 text-xs text-white font-mono h-16 resize-none focus:outline-none focus:border-[#7C3AED]"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2 text-xs text-white font-mono h-16 resize-none focus:outline-none focus:border-[#836EF9]"
               />
               <button
                 onClick={handleImportWallet}
                 disabled={busy || !mnemonicInput.trim()}
-                className="w-full py-2 rounded-lg text-xs font-bold text-white bg-[#7C3AED] hover:bg-[#6d28d9] disabled:opacity-40"
+                className="w-full py-2 rounded-lg text-xs font-medium text-white bg-[#836EF9] hover:bg-[#7360e0] disabled:opacity-40 transition-colors"
               >
                 Import
               </button>
@@ -304,12 +309,11 @@ export function UnlinkWallet() {
           )}
         </div>
 
-        {errorMsg && <p className="text-xs text-red-400 font-mono mt-2">{errorMsg}</p>}
+        {errorMsg && <p className="text-xs text-red-400 mt-2">{errorMsg}</p>}
       </div>
     );
   }
 
-  // Wallet exists — full private wallet UI
   const fmtPrivate = privateUsdcBalance !== undefined
     ? Number(formatUnits(privateUsdcBalance, 6)).toLocaleString("en-US", { minimumFractionDigits: 2 })
     : "...";
@@ -319,51 +323,45 @@ export function UnlinkWallet() {
 
   const activeBurner = burners[activeBurnerIdx];
 
-  const tabs: { key: Tab; label: string; icon: string }[] = [
-    { key: "shield", label: "Shield", icon: "D" },
-    { key: "transfer", label: "Transfer", icon: "T" },
-    { key: "burner", label: "Burner", icon: "B" },
+  const tabs: { key: Tab; label: string }[] = [
+    { key: "shield", label: "Shield" },
+    { key: "transfer", label: "Transfer" },
+    { key: "burner", label: "Burner" },
   ];
 
   return (
-    <div className="rounded-xl border border-[#7C3AED40] bg-[#7C3AED08] p-5 space-y-4">
-      <h3 className="text-white font-bold text-sm flex items-center gap-2">
-        <span className="text-[#7C3AED]">&#x1f6e1;</span> Private Account (Unlink)
-      </h3>
+    <div className="rounded-xl border border-[#836EF9]/20 bg-[#836EF9]/5 p-5 space-y-4">
+      <h3 className="text-white font-semibold text-sm">Private Account (Unlink)</h3>
 
-      {/* Private address */}
       {activeAccount && (
-        <div className="rounded-lg bg-[#0A0A0A] p-3 text-xs font-mono">
-          <p className="text-gray-600 mb-1">Private address</p>
-          <p className="text-[#7C3AED] break-all text-[11px]">{activeAccount.address}</p>
+        <div className="rounded-lg bg-zinc-950 p-3 text-xs font-mono">
+          <p className="text-zinc-600 mb-1">Private address</p>
+          <p className="text-[#836EF9] break-all text-[11px]">{activeAccount.address}</p>
         </div>
       )}
 
-      {/* Balances */}
       <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-        <div className="rounded-lg border border-gray-800 bg-[#111] p-3">
-          <p className="text-gray-600 mb-1">Public USDC</p>
-          <p className="text-white font-bold">${fmtPublic}</p>
+        <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/50 p-3">
+          <p className="text-zinc-600 mb-1">Public USDC</p>
+          <p className="text-white font-medium">${fmtPublic}</p>
         </div>
-        <div className="rounded-lg border border-[#7C3AED40] bg-[#7C3AED10] p-3">
-          <p className="text-gray-600 mb-1">Private USDC</p>
-          <p className="text-[#7C3AED] font-bold">${fmtPrivate}</p>
+        <div className="rounded-lg border border-[#836EF9]/20 bg-[#836EF9]/10 p-3">
+          <p className="text-zinc-600 mb-1">Private USDC</p>
+          <p className="text-[#836EF9] font-medium">${fmtPrivate}</p>
         </div>
       </div>
 
-      {/* Tab navigation */}
-      <div className="flex gap-1 rounded-lg bg-[#0A0A0A] p-1">
+      <div className="flex gap-1 rounded-lg bg-zinc-950 p-1">
         {tabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setActiveTab(t.key)}
-            className={`flex-1 py-1.5 rounded-md text-[10px] font-mono font-bold transition-all ${
-              activeTab === t.key
-                ? "bg-[#7C3AED] text-white"
-                : "text-gray-500 hover:text-gray-300"
-            }`}
+            className={`flex-1 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === t.key
+                ? "bg-[#836EF9] text-white"
+                : "text-zinc-500 hover:text-zinc-300"
+              }`}
           >
-            <span className="mr-1">{t.icon}</span>{t.label}
+            {t.label}
           </button>
         ))}
       </div>
@@ -371,27 +369,26 @@ export function UnlinkWallet() {
       {/* SHIELD TAB */}
       {activeTab === "shield" && (
         <div className="space-y-3">
-          {/* Shield (deposit) */}
           {step === "done" ? (
-            <div className="rounded-lg border border-[#00FF9440] bg-[#00FF9410] p-3 text-center">
-              <p className="text-[#00FF94] text-xs font-bold">USDC shielded! Now private.</p>
-              <button onClick={() => setStep("idle")} className="text-xs text-gray-500 mt-1 hover:text-white">Shield more</button>
+            <div className="rounded-lg border border-[#00e87b]/20 bg-[#00e87b]/5 p-3 text-center">
+              <p className="text-[#00e87b] text-xs font-medium">USDC shielded! Now private.</p>
+              <button onClick={() => setStep("idle")} className="text-xs text-zinc-500 mt-1 hover:text-white transition-colors">Shield more</button>
             </div>
           ) : (
             <div className="space-y-2">
-              <label className="text-xs text-gray-500 font-mono">Shield USDC (public → private)</label>
+              <label className="text-xs text-zinc-500">Shield USDC (public to private)</label>
               <div className="flex gap-2">
                 <input
                   type="number"
                   value={shieldAmount}
                   onChange={(e) => setShieldAmount(e.target.value)}
                   placeholder="0.00"
-                  className="flex-1 bg-[#0A0A0A] border border-gray-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#7C3AED]"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#836EF9]"
                 />
                 <button
                   onClick={handleShield}
                   disabled={busy || step === "approving" || step === "depositing" || !shieldAmount || !address}
-                  className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-[#7C3AED] hover:bg-[#6d28d9] disabled:opacity-40 transition-all whitespace-nowrap"
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-[#836EF9] hover:bg-[#7360e0] disabled:opacity-40 transition-colors whitespace-nowrap"
                 >
                   {step === "approving" ? "Approving..." : step === "depositing" ? "Shielding..." : "Shield"}
                 </button>
@@ -399,22 +396,21 @@ export function UnlinkWallet() {
               {publicBalance && (
                 <button
                   onClick={() => setShieldAmount(formatUnits(publicBalance as bigint, 6))}
-                  className="text-[10px] text-gray-600 hover:text-[#7C3AED] font-mono"
+                  className="text-[11px] text-zinc-600 hover:text-[#836EF9] transition-colors"
                 >
                   Shield all ({formatUnits(publicBalance as bigint, 6)} USDC)
                 </button>
               )}
             </div>
           )}
-          {step === "error" && <p className="text-xs text-red-400 font-mono">{errorMsg}</p>}
+          {step === "error" && <p className="text-xs text-red-400">{errorMsg}</p>}
 
-          {/* Withdraw */}
-          <div className="border-t border-gray-800 pt-3 space-y-2">
-            <label className="text-xs text-gray-500 font-mono">Withdraw (private → any address)</label>
+          <div className="border-t border-zinc-800/60 pt-3 space-y-2">
+            <label className="text-xs text-zinc-500">Withdraw (private to any address)</label>
             {wStep === "done" ? (
-              <div className="rounded-lg border border-[#00FF9440] bg-[#00FF9410] p-3 text-center">
-                <p className="text-[#00FF94] text-xs font-bold">Withdrawn! Check destination wallet.</p>
-                <button onClick={() => setWStep("idle")} className="text-xs text-gray-500 mt-1 hover:text-white">Withdraw more</button>
+              <div className="rounded-lg border border-[#00e87b]/20 bg-[#00e87b]/5 p-3 text-center">
+                <p className="text-[#00e87b] text-xs font-medium">Withdrawn! Check destination wallet.</p>
+                <button onClick={() => setWStep("idle")} className="text-xs text-zinc-500 mt-1 hover:text-white transition-colors">Withdraw more</button>
               </div>
             ) : (
               <>
@@ -423,7 +419,7 @@ export function UnlinkWallet() {
                   value={withdrawAddr}
                   onChange={(e) => setWithdrawAddr(e.target.value)}
                   placeholder="0x... recipient address"
-                  className="w-full bg-[#0A0A0A] border border-gray-800 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#7C3AED]"
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#836EF9]"
                 />
                 <div className="flex gap-2">
                   <input
@@ -431,65 +427,65 @@ export function UnlinkWallet() {
                     value={withdrawAmount}
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                     placeholder="0.00"
-                    className="flex-1 bg-[#0A0A0A] border border-gray-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#7C3AED]"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#836EF9]"
                   />
                   <button
                     onClick={handleWithdraw}
                     disabled={busy || wStep === "withdrawing" || withdrawPending || !withdrawAmount || !withdrawAddr}
-                    className="px-4 py-2 rounded-lg text-xs font-bold text-white bg-gray-800 hover:bg-gray-700 disabled:opacity-40 transition-all whitespace-nowrap"
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 transition-colors whitespace-nowrap"
                   >
                     {wStep === "withdrawing" ? "..." : "Withdraw"}
                   </button>
                 </div>
               </>
             )}
-            {wStep === "error" && <p className="text-xs text-red-400 font-mono">{wError}</p>}
+            {wStep === "error" && <p className="text-xs text-red-400">{wError}</p>}
           </div>
         </div>
       )}
 
-      {/* TRANSFER TAB — Private P2P */}
+      {/* TRANSFER TAB */}
       {activeTab === "transfer" && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-[#00FF9420] bg-[#00FF9408] p-3">
+          <div className="rounded-lg border border-[#00e87b]/15 bg-[#00e87b]/5 p-3">
             <div className="flex items-center gap-2 mb-1">
-              <span className="w-2 h-2 rounded-full bg-[#00FF94]" />
-              <span className="text-[10px] text-[#00FF94] font-mono font-bold uppercase tracking-wider">Maximum Privacy</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00e87b]" />
+              <span className="text-[11px] text-[#00e87b] font-medium">Maximum Privacy</span>
             </div>
-            <p className="text-[10px] text-gray-500 font-mono">
-              Sender, recipient, and amount are ALL hidden by ZK proofs. No on-chain trace.
+            <p className="text-[11px] text-zinc-500">
+              Sender, recipient, and amount are all hidden by ZK proofs. No on-chain trace.
             </p>
           </div>
 
           {tStep === "done" ? (
-            <div className="rounded-lg border border-[#00FF9440] bg-[#00FF9410] p-3 text-center">
-              <p className="text-[#00FF94] text-xs font-bold">Private transfer complete!</p>
-              <p className="text-[10px] text-gray-500 mt-1 font-mono">Zero on-chain footprint.</p>
-              <button onClick={() => setTStep("idle")} className="text-xs text-gray-500 mt-2 hover:text-white">Send again</button>
+            <div className="rounded-lg border border-[#00e87b]/20 bg-[#00e87b]/5 p-3 text-center">
+              <p className="text-[#00e87b] text-xs font-medium">Private transfer complete!</p>
+              <p className="text-[11px] text-zinc-500 mt-1">Zero on-chain footprint.</p>
+              <button onClick={() => setTStep("idle")} className="text-xs text-zinc-500 mt-2 hover:text-white transition-colors">Send again</button>
             </div>
           ) : (
             <div className="space-y-2">
-              <label className="text-xs text-gray-500 font-mono">Recipient (unlink1... address)</label>
+              <label className="text-xs text-zinc-500">Recipient (unlink1... address)</label>
               <input
                 type="text"
                 value={transferRecipient}
                 onChange={(e) => setTransferRecipient(e.target.value)}
                 placeholder="unlink1..."
-                className="w-full bg-[#0A0A0A] border border-gray-800 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#00FF94]"
+                className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-xs font-mono focus:outline-none focus:border-[#00e87b]"
               />
-              <label className="text-xs text-gray-500 font-mono">Amount (USDC)</label>
+              <label className="text-xs text-zinc-500">Amount (USDC)</label>
               <div className="flex gap-2">
                 <input
                   type="number"
                   value={transferAmount}
                   onChange={(e) => setTransferAmount(e.target.value)}
                   placeholder="0.00"
-                  className="flex-1 bg-[#0A0A0A] border border-gray-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#00FF94]"
+                  className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#00e87b]"
                 />
                 <button
                   onClick={handleTransfer}
                   disabled={transferPending || tStep === "sending" || !transferRecipient || !transferAmount}
-                  className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-[#00FF94] hover:bg-[#00cc77] disabled:opacity-40 transition-all whitespace-nowrap"
+                  className="px-4 py-2 rounded-lg text-xs font-medium text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-40 transition-colors whitespace-nowrap"
                 >
                   {tStep === "sending" || transferPending ? "Sending..." : "Send Private"}
                 </button>
@@ -497,7 +493,7 @@ export function UnlinkWallet() {
               {privateUsdcBalance !== undefined && (
                 <button
                   onClick={() => setTransferAmount(formatUnits(privateUsdcBalance, 6))}
-                  className="text-[10px] text-gray-600 hover:text-[#00FF94] font-mono"
+                  className="text-[11px] text-zinc-600 hover:text-[#00e87b] transition-colors"
                 >
                   Send all ({formatUnits(privateUsdcBalance, 6)} USDC)
                 </button>
@@ -505,106 +501,92 @@ export function UnlinkWallet() {
             </div>
           )}
           {(tStep === "error" || transferError) && (
-            <p className="text-xs text-red-400 font-mono">{tError || transferError?.message}</p>
+            <p className="text-xs text-red-400">{tError || transferError?.message}</p>
           )}
         </div>
       )}
 
-      {/* BURNER TAB — Anonymous Betting */}
+      {/* BURNER TAB */}
       {activeTab === "burner" && (
         <div className="space-y-3">
-          <div className="rounded-lg border border-[#F59E0B20] bg-[#F59E0B08] p-3">
+          <div className="rounded-lg border border-amber-500/15 bg-amber-500/5 p-3">
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-[10px] font-mono font-bold text-[#F59E0B] uppercase tracking-wider">Anonymous Betting</span>
+              <span className="text-[11px] font-medium text-amber-400">Anonymous Betting</span>
             </div>
-            <p className="text-[10px] text-gray-500 font-mono">
-              Create a burner wallet, fund it from your shielded pool, bet anonymously, then sweep winnings back to privacy.
+            <p className="text-[11px] text-zinc-500">
+              Create a burner wallet, fund from shielded pool, bet anonymously, sweep winnings back to privacy.
             </p>
           </div>
 
-          {/* Burner status */}
           {!activeBurner ? (
             <button
               onClick={handleCreateBurner}
               disabled={burnerStep === "creating"}
-              className="w-full py-3 rounded-xl font-bold text-xs text-white bg-[#F59E0B] hover:bg-[#d97706] disabled:opacity-40 transition-all"
+              className="w-full py-2.5 rounded-lg font-medium text-xs text-black bg-amber-400 hover:bg-amber-500 disabled:opacity-40 transition-colors"
             >
               {burnerStep === "creating" ? "Creating..." : "Create Burner Wallet"}
             </button>
           ) : (
             <div className="space-y-3">
-              {/* Burner info card */}
-              <div className="rounded-lg bg-[#0A0A0A] p-3 text-xs font-mono space-y-2">
+              <div className="rounded-lg bg-zinc-950 p-3 text-xs font-mono space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-gray-600">Burner #{activeBurnerIdx}</span>
-                  <span className="text-[9px] text-[#F59E0B] px-1.5 py-0.5 rounded bg-[#F59E0B15] font-bold">ANONYMOUS</span>
+                  <span className="text-zinc-600">Burner #{activeBurnerIdx}</span>
+                  <span className="text-[11px] text-amber-400 px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">anonymous</span>
                 </div>
-                <p className="text-gray-400 break-all text-[11px]">{activeBurner.address}</p>
-                <div className="flex items-center justify-between pt-1 border-t border-gray-800">
-                  <span className="text-gray-600">USDC Balance</span>
+                <p className="text-zinc-400 break-all text-[11px]">{activeBurner.address}</p>
+                <div className="flex items-center justify-between pt-1 border-t border-zinc-800/60">
+                  <span className="text-zinc-600">USDC Balance</span>
                   <div className="flex items-center gap-2">
-                    <span className="text-white font-bold">{burnerBalance ?? "—"}</span>
-                    <button onClick={refreshBurnerBalance} className="text-[9px] text-gray-600 hover:text-[#F59E0B]">refresh</button>
+                    <span className="text-white font-medium">{burnerBalance ?? "—"}</span>
+                    <button onClick={refreshBurnerBalance} className="text-[11px] text-zinc-600 hover:text-amber-400 transition-colors">refresh</button>
                   </div>
                 </div>
               </div>
 
-              {/* Fund burner */}
               <div className="space-y-2">
-                <label className="text-xs text-gray-500 font-mono">Fund from shielded pool</label>
+                <label className="text-xs text-zinc-500">Fund from shielded pool</label>
                 <div className="flex gap-2">
                   <input
                     type="number"
                     value={burnerFundAmt}
                     onChange={(e) => setBurnerFundAmt(e.target.value)}
                     placeholder="0.00"
-                    className="flex-1 bg-[#0A0A0A] border border-gray-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-[#F59E0B]"
+                    className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-white text-sm font-mono focus:outline-none focus:border-amber-400"
                   />
                   <button
                     onClick={handleFundBurner}
                     disabled={burnerStep === "funding" || burnerFund.isPending || !burnerFundAmt}
-                    className="px-4 py-2 rounded-lg text-xs font-bold text-black bg-[#F59E0B] hover:bg-[#d97706] disabled:opacity-40 transition-all whitespace-nowrap"
+                    className="px-4 py-2 rounded-lg text-xs font-medium text-black bg-amber-400 hover:bg-amber-500 disabled:opacity-40 transition-colors whitespace-nowrap"
                   >
                     {burnerStep === "funding" || burnerFund.isPending ? "Funding..." : "Fund"}
                   </button>
                 </div>
               </div>
 
-              {/* Sweep back to pool */}
               <button
                 onClick={handleSweepBurner}
                 disabled={burnerStep === "sweeping" || burnerSweep.isPending}
-                className="w-full py-2 rounded-lg text-xs font-bold text-[#7C3AED] border border-[#7C3AED40] hover:bg-[#7C3AED10] disabled:opacity-40 transition-all"
+                className="w-full py-2 rounded-lg text-xs font-medium text-[#836EF9] border border-[#836EF9]/30 hover:bg-[#836EF9]/10 disabled:opacity-40 transition-colors"
               >
                 {burnerStep === "sweeping" || burnerSweep.isPending ? "Sweeping..." : "Sweep All Back to Privacy Pool"}
               </button>
 
               {burnerStep === "done" && (
-                <div className="rounded-lg border border-[#00FF9440] bg-[#00FF9410] p-3 text-center">
-                  <p className="text-[#00FF94] text-xs font-bold">Burner funds swept back to private pool!</p>
-                  <button onClick={() => setBurnerStep("idle")} className="text-xs text-gray-500 mt-1 hover:text-white">Continue</button>
+                <div className="rounded-lg border border-[#00e87b]/20 bg-[#00e87b]/5 p-3 text-center">
+                  <p className="text-[#00e87b] text-xs font-medium">Funds swept back to private pool!</p>
+                  <button onClick={() => setBurnerStep("idle")} className="text-xs text-zinc-500 mt-1 hover:text-white transition-colors">Continue</button>
                 </div>
               )}
             </div>
           )}
 
-          {burnerError && <p className="text-xs text-red-400 font-mono">{burnerError}</p>}
-
-          {/* Flow diagram */}
-          <div className="rounded-lg bg-[#0A0A0A] p-3 text-[9px] font-mono text-gray-600 space-y-1">
-            <p className="text-gray-500 font-bold mb-1">FLOW:</p>
-            <p>1. Create burner → ephemeral wallet</p>
-            <p>2. Fund from shielded pool → ZK withdraw to burner</p>
-            <p>3. Bet anonymously → no link to your identity</p>
-            <p>4. Sweep winnings → back into ZK privacy pool</p>
-          </div>
+          {burnerError && <p className="text-xs text-red-400">{burnerError}</p>}
         </div>
       )}
 
-      {/* Info */}
-      <div className="border-t border-gray-800 pt-3 text-xs text-gray-600 space-y-1">
+      <div className="border-t border-zinc-800/60 pt-3 text-xs text-zinc-600 space-y-1">
         <p>Shielded USDC is hidden by zero-knowledge proofs.</p>
-        <p>Transfer privately or withdraw to <span className="text-gray-400">any</span> address — breaking the link.</p>
+        <p>Transfer privately or withdraw to any address — breaking the link.</p>
       </div>
     </div>
   );

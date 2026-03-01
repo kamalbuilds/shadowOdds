@@ -11,8 +11,8 @@
   "dependencies": {
     "@pythnetwork/price-service-client": "^1.11.0",
     "@tanstack/react-query": "^5.90.21",
-    "@unlink-xyz/react": "^0.1.6",
-    "lightningcss": "^1.31.1",
+    "@unlink-xyz/core": "^0.1.7-canary.74fbd72",
+    "@unlink-xyz/react": "^0.1.7-canary.74fbd72",
     "next": "16.1.6",
     "react": "19.2.3",
     "react-dom": "19.2.3",
