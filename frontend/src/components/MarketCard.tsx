@@ -66,7 +66,12 @@ export function MarketCard({ id, question, totalPool, bettingDeadline, resolved,
         </div>
 
         {/* Question */}
-        <p className="text-white text-[15px] font-medium leading-snug flex-1">{truncated}</p>
+        <div className="flex items-start gap-2 flex-1">
+          <p className="text-white text-[15px] font-medium leading-snug flex-1">{truncated}</p>
+          <span className="shrink-0 text-[11px] font-medium text-[#00e87b] bg-[#00e87b]/10 px-1.5 py-0.5 rounded">
+            5% APR
+          </span>
+        </div>
 
         {/* Footer */}
         <div className="flex items-center justify-between pt-3 border-t border-zinc-800/40">

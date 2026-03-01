@@ -1,6 +1,6 @@
 # ShadowOdds
 
-**The first private prediction market on EVM.**
+**The first private prediction market on EVM with Openclaw Agents Betting.**
 
 Bet privately. Win privately. Withdraw privately. Built on Monad + Unlink.
 
@@ -8,7 +8,7 @@ Bet privately. Win privately. Withdraw privately. Built on Monad + Unlink.
 
 ## The Problem
 
-Polymarket does a billion dollars a week. Every single bet is public — your wallet, your direction, your size. Tools exist to stalk whale positions in real time. This creates two critical problems:
+Polymarket does a billion dollars a week. Every single bet is public your wallet, your direction, your size. Tools exist to stalk whale positions in real time. This creates two critical problems:
 
 1. **Institutional lockout** — No fund manager will take a public position that competitors can front-run
 2. **Insider exploitation** — If you know something, the chain knows you know
@@ -234,6 +234,7 @@ All feeds use exponent -8 (8 decimal places of precision).
   markets:
 
   openclaw-shadowodds/
+  
   ├── SKILL.md           ← OpenClaw agent instructions
   ├── scripts/           ← Shell scripts for manual testing
   └── service/           ← Express backend (TypeScript)

@@ -36,6 +36,9 @@ export const config = createConfig({
 
 // Contract addresses — update after deploy
 export const SHADOW_ODDS_ADDRESS = (process.env.NEXT_PUBLIC_SHADOW_ODDS_ADDRESS ?? "") as `0x${string}`;
+export const SHADOW_ODDS_V2_ADDRESS = (process.env.NEXT_PUBLIC_SHADOW_ODDS_V2_ADDRESS ?? "") as `0x${string}`;
+export const YIELD_VAULT_ADDRESS = (process.env.NEXT_PUBLIC_YIELD_VAULT_ADDRESS ?? "") as `0x${string}`;
+export const SHADOW_LIMIT_ORDER_ADDRESS = (process.env.NEXT_PUBLIC_SHADOW_LIMIT_ORDER_ADDRESS ?? "") as `0x${string}`;
 export const USDC_ADDRESS = (process.env.NEXT_PUBLIC_USDC_ADDRESS ?? "0xE557929407b3EACb89CfF69F46D3Dfcb81724615") as `0x${string}`;
 export const PYTH_ADDRESS = (process.env.NEXT_PUBLIC_PYTH_ADDRESS ?? "0x2880aB155794e7179c9eE2e38200202908C17B43") as `0x${string}`;
 

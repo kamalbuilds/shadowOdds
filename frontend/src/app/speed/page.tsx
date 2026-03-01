@@ -145,6 +145,15 @@ function SwipeCard({
     query: { enabled: !!address },
   });
 
+  // Hooks must be called unconditionally — before any early return
+  const bettingDeadline = (data as unknown[])?.[1] as bigint ?? 0n;
+  const bettingSecsLeft = useCountdown(bettingDeadline);
+
+  const [savedBet, setSavedBet] = useState<ReturnType<typeof loadCommitment>>(null);
+  useEffect(() => {
+    setSavedBet(address ? loadCommitment(marketId, address) : null);
+  }, [address, marketId, betStep, revealStep]);
+
   if (!data) {
     return (
       <div className="w-full max-w-sm mx-auto aspect-[3/4] rounded-2xl border border-zinc-800/50 bg-zinc-900/40 shimmer" />
@@ -169,14 +178,8 @@ function SwipeCard({
     noPool: rawData[12],
   };
 
-  const bettingSecsLeft = useCountdown(market.bettingDeadline);
   const isBettingOpen = bettingSecsLeft > 0 && !market.resolved;
   const thresholdPrice = Number(market.priceThreshold) / 1e8;
-  const [savedBet, setSavedBet] = useState<ReturnType<typeof loadCommitment>>(null);
-  useEffect(() => {
-    setSavedBet(address ? loadCommitment(marketId, address) : null);
-  }, [address, marketId, betStep, revealStep]);
-
   const priceAbove = livePrice !== null && livePrice >= thresholdPrice;
 
   async function handleQuickBet(direction: Outcome) {

@@ -6,10 +6,10 @@ import {
   useAccount,
   useReadContract,
   useWriteContract,
-  useWaitForTransactionReceipt,
   usePublicClient,
 } from "wagmi";
-import { parseUnits, formatUnits, parseAbi } from "viem";
+import { parseUnits, formatUnits, parseAbi, encodeFunctionData } from "viem";
+import { useInteract } from "@unlink-xyz/react";
 import {
   Outcome,
   OracleType,
@@ -22,13 +22,15 @@ import {
   marketStatus,
   outcomeLabel,
 } from "@/lib/shadowodds";
-import { SHADOW_ODDS_ADDRESS, USDC_ADDRESS, PYTH_ADDRESS, PYTH_HERMES_URL, feedInfo } from "@/lib/wagmi";
+import { SHADOW_ODDS_V2_ADDRESS, USDC_ADDRESS, PYTH_ADDRESS, PYTH_HERMES_URL, feedInfo } from "@/lib/wagmi";
 import { ConnectButton } from "@/components/ConnectButton";
 import { UnlinkWallet } from "@/components/UnlinkWallet";
 import { PrivacyScore } from "@/components/PrivacyScore";
 import { ShadowReceipt } from "@/components/ShadowReceipt";
 import { PrivacyTimeline } from "@/components/PrivacyTimeline";
-import { PrivateAdapter } from "@/components/PrivateAdapter";
+import { YieldIndicator } from "@/components/YieldIndicator";
+import { LimitOrderForm } from "@/components/LimitOrderForm";
+import { LimitOrderStatus } from "@/components/LimitOrderStatus";
 import ShadowOddsABI from "@/lib/ShadowOddsABI.json";
 
 const ERC20_ABI = parseAbi([
@@ -143,7 +145,7 @@ function ResolveWithPythButton({ marketId, feedId, onResolved }: { marketId: num
 
       setStatus("resolving");
       await writeContractAsync({
-        address: SHADOW_ODDS_ADDRESS,
+        address: SHADOW_ODDS_V2_ADDRESS,
         abi: ShadowOddsABI,
         functionName: "resolveWithPyth",
         args: [BigInt(marketId), [vaaHex]],
@@ -189,14 +191,16 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
   const [selectedOutcome, setSelectedOutcome] = useState<Outcome | null>(null);
   const [step, setStep] = useState<"idle" | "approving" | "betting" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
+  const [privacyMode, setPrivacyMode] = useState(true); // default: private
 
+  const { interact } = useInteract();
   const amountBigInt = amount ? parseUnits(amount, 6) : 0n;
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: USDC_ADDRESS,
     abi: ERC20_ABI,
     functionName: "allowance",
-    args: address ? [address, SHADOW_ODDS_ADDRESS] : undefined,
+    args: address ? [address, SHADOW_ODDS_V2_ADDRESS] : undefined,
     query: { enabled: !!address },
   });
 
@@ -214,26 +218,55 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
   async function handlePlaceBet() {
     if (!address || !selectedOutcome || !amount || parseFloat(amount) <= 0) return;
     setErrorMsg("");
+
+    const bet = createCommitment(selectedOutcome, amount);
+
     try {
-      if (needsApproval) {
-        setStep("approving");
-        await writeContractAsync({
-          address: USDC_ADDRESS,
+      if (privacyMode) {
+        // Private flow via useInteract — adapter places the bet
+        setStep("betting");
+        const approveData = encodeFunctionData({
           abi: ERC20_ABI,
           functionName: "approve",
-          args: [SHADOW_ODDS_ADDRESS, amountBigInt],
+          args: [SHADOW_ODDS_V2_ADDRESS, amountBigInt],
         });
-        await refetchAllowance();
+        const betData = encodeFunctionData({
+          abi: ShadowOddsABI,
+          functionName: "placeBet",
+          args: [BigInt(marketId), bet.commitment, amountBigInt],
+        });
+        await interact({
+          spend: [{ token: USDC_ADDRESS, amount: amountBigInt + 1n }],
+          calls: [
+            { to: USDC_ADDRESS, data: approveData, value: 0n },
+            { to: SHADOW_ODDS_V2_ADDRESS, data: betData, value: 0n },
+          ],
+          receive: [{ token: USDC_ADDRESS, minAmount: 0n }],
+        });
+        bet.viaAdapter = true;
+        saveCommitment(marketId, address, bet);
+      } else {
+        // Direct flow — user wallet places the bet
+        if (needsApproval) {
+          setStep("approving");
+          await writeContractAsync({
+            address: USDC_ADDRESS,
+            abi: ERC20_ABI,
+            functionName: "approve",
+            args: [SHADOW_ODDS_V2_ADDRESS, amountBigInt],
+          });
+          await refetchAllowance();
+        }
+        setStep("betting");
+        await writeContractAsync({
+          address: SHADOW_ODDS_V2_ADDRESS,
+          abi: ShadowOddsABI,
+          functionName: "placeBet",
+          args: [BigInt(marketId), bet.commitment, bet.amount],
+        });
+        saveCommitment(marketId, address, bet);
       }
-      setStep("betting");
-      const bet = createCommitment(selectedOutcome, amount);
-      await writeContractAsync({
-        address: SHADOW_ODDS_ADDRESS,
-        abi: ShadowOddsABI,
-        functionName: "placeBet",
-        args: [BigInt(marketId), bet.commitment, bet.amount],
-      });
-      saveCommitment(marketId, address, bet);
+
       setStep("done");
       onBetPlaced();
     } catch (e: unknown) {
@@ -246,11 +279,16 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
   if (step === "done") {
     return (
       <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-5 text-center">
-        <p className="text-[#00e87b] font-semibold mb-1">Bet placed</p>
+        <p className="text-[#00e87b] font-semibold mb-1">Bet placed{privacyMode ? " privately" : ""}</p>
         <p className="text-zinc-400 text-sm mb-3">
           Your {selectedOutcome === Outcome.YES ? "YES" : "NO"} position is hidden on-chain.
         </p>
-        <p className="text-xs text-zinc-600 font-mono">
+        {privacyMode && (
+          <p className="text-xs text-[#836EF9]">
+            Placed via Unlink adapter — no wallet link.
+          </p>
+        )}
+        <p className="text-xs text-zinc-600 font-mono mt-2">
           Direction: <span className="redacted px-2">████</span> hidden
         </p>
       </div>
@@ -261,6 +299,27 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
 
   return (
     <div className="space-y-4">
+      {/* Privacy mode toggle */}
+      <div className="flex items-center gap-1 p-0.5 bg-zinc-950 rounded-lg border border-zinc-800/40">
+        <button
+          onClick={() => setPrivacyMode(true)}
+          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+            privacyMode ? "bg-[#836EF9]/20 text-[#836EF9] border border-[#836EF9]/30" : "text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+          Private
+        </button>
+        <button
+          onClick={() => setPrivacyMode(false)}
+          className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+            !privacyMode ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
+          }`}
+        >
+          Direct
+        </button>
+      </div>
+
       {address && usdcBalance !== undefined && (
         <div className="flex items-center justify-between text-sm">
           <span className="text-zinc-500">USDC balance</span>
@@ -321,14 +380,37 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
 
       {selectedOutcome !== null && amount && (
         <div className="rounded-lg border border-zinc-800/60 bg-zinc-900 p-3 text-sm space-y-1">
-          <div className="flex justify-between text-zinc-500">
-            <span>Visible on-chain</span>
-            <span className="text-white font-mono">${amount}</span>
-          </div>
-          <div className="flex justify-between text-zinc-500">
-            <span>Hidden on-chain</span>
-            <span className="text-[#00e87b] font-mono">direction</span>
-          </div>
+          {privacyMode ? (
+            <>
+              <div className="flex justify-between text-zinc-500">
+                <span>Source</span>
+                <span className="text-[#836EF9] font-mono">Shielded pool</span>
+              </div>
+              <div className="flex justify-between text-zinc-500">
+                <span>On-chain bettor</span>
+                <span className="text-[#836EF9] font-mono">Adapter (anonymous)</span>
+              </div>
+              <div className="flex justify-between text-zinc-500">
+                <span>Direction</span>
+                <span className="text-[#00e87b] font-mono">hidden</span>
+              </div>
+              <div className="flex justify-between text-zinc-500">
+                <span>Amount</span>
+                <span className="text-[#00e87b] font-mono">hidden</span>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between text-zinc-500">
+                <span>Visible on-chain</span>
+                <span className="text-white font-mono">${amount}</span>
+              </div>
+              <div className="flex justify-between text-zinc-500">
+                <span>Hidden on-chain</span>
+                <span className="text-[#00e87b] font-mono">direction</span>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -340,11 +422,17 @@ function BetForm({ market, marketId, onBetPlaced }: { market: Market; marketId: 
         <button
           onClick={handlePlaceBet}
           disabled={isBusy || !selectedOutcome || !amount || parseFloat(amount || "0") <= 0}
-          className="w-full py-3.5 rounded-lg font-semibold text-sm text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-40 transition-colors"
+          className={`w-full py-3.5 rounded-lg font-semibold text-sm transition-colors disabled:opacity-40 ${
+            privacyMode
+              ? "text-white bg-[#836EF9] hover:bg-[#7360e0]"
+              : "text-black bg-[#00e87b] hover:bg-[#00d46f]"
+          }`}
         >
           {isBusy
             ? (step === "approving" ? "Approving..." : "Placing bet...")
-            : needsApproval ? "Approve & Bet" : "Place Hidden Bet"}
+            : privacyMode
+              ? "Place Private Bet"
+              : needsApproval ? "Approve & Bet" : "Place Bet"}
         </button>
       )}
 
@@ -362,27 +450,31 @@ function RevealForm({ market, marketId, onRevealed }: { market: Market; marketId
   const { writeContractAsync } = useWriteContract();
   const savedBet = address ? loadCommitment(marketId, address) : null;
 
+  // V2: read bet by commitment hash
   const { data: betData } = useReadContract({
-    address: SHADOW_ODDS_ADDRESS,
+    address: SHADOW_ODDS_V2_ADDRESS,
     abi: ShadowOddsABI,
     functionName: "bets",
-    args: address ? [BigInt(marketId), address] : undefined,
-    query: { enabled: !!address, refetchInterval: 3000 },
+    args: savedBet ? [BigInt(marketId), savedBet.commitment] : undefined,
+    query: { enabled: !!savedBet, refetchInterval: 3000 },
   });
 
-  const onChainBet = betData as [string, bigint, number, boolean, boolean] | undefined;
-  const alreadyRevealed = onChainBet?.[3] ?? false;
+  // V2 Bet struct: (address placer, bytes32 commitment, uint256 lockedAmount, uint8 outcome, bool revealed, bool claimed)
+  const onChainBet = betData as [string, string, bigint, number, boolean, boolean] | undefined;
+  const alreadyRevealed = onChainBet?.[4] ?? false;
 
   async function handleReveal() {
     if (!address || !savedBet) return;
     setErrorMsg("");
     setStep("revealing");
     try {
+      // V2: revealBet(marketId, commitment, secret, outcome, amount, nonce)
+      // Anyone can reveal — no msg.sender check. Use direct wallet always.
       await writeContractAsync({
-        address: SHADOW_ODDS_ADDRESS,
+        address: SHADOW_ODDS_V2_ADDRESS,
         abi: ShadowOddsABI,
         functionName: "revealBet",
-        args: [BigInt(marketId), savedBet.secret, savedBet.outcome, savedBet.amount, savedBet.nonce],
+        args: [BigInt(marketId), savedBet.commitment, savedBet.secret, savedBet.outcome, savedBet.amount, savedBet.nonce],
       });
       setStep("done");
       onRevealed();
@@ -426,7 +518,17 @@ function RevealForm({ market, marketId, onRevealed }: { market: Market; marketId
           <span className="text-zinc-500">Amount</span>
           <span className="text-white font-mono">{formatUSDC(savedBet.amount)}</span>
         </div>
+        {savedBet.viaAdapter && (
+          <div className="flex justify-between">
+            <span className="text-zinc-500">Placed via</span>
+            <span className="text-[#836EF9] text-xs">Unlink (private)</span>
+          </div>
+        )}
       </div>
+
+      <p className="text-xs text-zinc-600">
+        Reveal uses your direct wallet — no privacy leak since reveal data becomes public anyway.
+      </p>
 
       {!address ? <ConnectButton /> : (
         <button
@@ -448,30 +550,53 @@ function ClaimForm({ marketId, market, onClaimed }: { marketId: number; market: 
   const [step, setStep] = useState<"idle" | "claiming" | "done" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
   const { writeContractAsync } = useWriteContract();
+  const { interact } = useInteract();
 
+  const savedBet = address ? loadCommitment(marketId, address) : null;
+
+  // V2: read bet by commitment hash
   const { data: betData, refetch } = useReadContract({
-    address: SHADOW_ODDS_ADDRESS,
+    address: SHADOW_ODDS_V2_ADDRESS,
     abi: ShadowOddsABI,
     functionName: "bets",
-    args: address ? [BigInt(marketId), address] : undefined,
-    query: { enabled: !!address, refetchInterval: 3000 },
+    args: savedBet ? [BigInt(marketId), savedBet.commitment] : undefined,
+    query: { enabled: !!savedBet, refetchInterval: 3000 },
   });
 
-  const bet = betData as [string, bigint, number, boolean, boolean] | undefined;
-  const revealed = bet?.[3] ?? false;
-  const claimed = bet?.[4] ?? false;
-  const betOutcome = bet?.[2] as Outcome | undefined;
+  // V2 Bet struct: (address placer, bytes32 commitment, uint256 lockedAmount, uint8 outcome, bool revealed, bool claimed)
+  const bet = betData as [string, string, bigint, number, boolean, boolean] | undefined;
+  const revealed = bet?.[4] ?? false;
+  const claimed = bet?.[5] ?? false;
+  const betOutcome = bet?.[3] as Outcome | undefined;
   const isWinner = betOutcome !== undefined && betOutcome === market.result && market.result !== Outcome.PENDING;
 
   async function handleClaim() {
+    if (!savedBet) return;
     setStep("claiming");
     try {
-      await writeContractAsync({
-        address: SHADOW_ODDS_ADDRESS,
-        abi: ShadowOddsABI,
-        functionName: "claimWinnings",
-        args: [BigInt(marketId)],
-      });
+      if (savedBet.viaAdapter) {
+        // Private claim via useInteract — winnings reshield to pool automatically
+        const claimData = encodeFunctionData({
+          abi: ShadowOddsABI,
+          functionName: "claimWinnings",
+          args: [BigInt(marketId), savedBet.commitment],
+        });
+        await interact({
+          spend: [{ token: USDC_ADDRESS, amount: 1n }],
+          calls: [
+            { to: SHADOW_ODDS_V2_ADDRESS, data: claimData, value: 0n },
+          ],
+          receive: [{ token: USDC_ADDRESS, minAmount: 0n }],
+        });
+      } else {
+        // Direct claim — V2: claimWinnings(marketId, commitment)
+        await writeContractAsync({
+          address: SHADOW_ODDS_V2_ADDRESS,
+          abi: ShadowOddsABI,
+          functionName: "claimWinnings",
+          args: [BigInt(marketId), savedBet.commitment],
+        });
+      }
       setStep("done");
       onClaimed();
       refetch();
@@ -486,13 +611,15 @@ function ClaimForm({ marketId, market, onClaimed }: { marketId: number; market: 
     return (
       <div className="rounded-lg border border-zinc-700 bg-zinc-800/50 p-5 text-center">
         <p className="text-[#00e87b] font-semibold mb-1">Winnings claimed</p>
-        <p className="text-zinc-400 text-sm">USDC sent to your wallet.</p>
-        <p className="text-zinc-600 text-xs mt-3">
-          Shield your winnings below to break the wallet-to-win link.
+        <p className="text-zinc-400 text-sm">
+          {savedBet?.viaAdapter
+            ? "USDC reshielded to your privacy pool."
+            : "USDC sent to your wallet."}
         </p>
       </div>
     );
   }
+  if (!savedBet) return <p className="text-zinc-500 text-sm text-center py-4">No bet found.</p>;
   if (claimed) return <p className="text-zinc-500 text-center py-4">Already claimed.</p>;
   if (!revealed) return <p className="text-amber-400 text-sm text-center py-4">Reveal your bet first.</p>;
   if (!isWinner) return <p className="text-zinc-500 text-sm text-center py-4">You bet {outcomeLabel(betOutcome!)} — market resolved {outcomeLabel(market.result)}.</p>;
@@ -503,14 +630,25 @@ function ClaimForm({ marketId, market, onClaimed }: { marketId: number; market: 
         <p className="text-xs text-zinc-500 mb-1">You won</p>
         <p className="text-xl font-bold text-[#00e87b]">{outcomeLabel(betOutcome!)}</p>
         <p className="text-xs text-zinc-600 mt-1">1% protocol fee on profits</p>
+        {savedBet.viaAdapter && (
+          <p className="text-xs text-[#836EF9] mt-1">Winnings will reshield to your pool</p>
+        )}
       </div>
       {!address ? <ConnectButton /> : (
         <button
           onClick={handleClaim}
           disabled={step === "claiming"}
-          className="w-full py-3.5 rounded-lg font-semibold text-sm text-black bg-[#00e87b] hover:bg-[#00d46f] disabled:opacity-40 transition-colors"
+          className={`w-full py-3.5 rounded-lg font-semibold text-sm disabled:opacity-40 transition-colors ${
+            savedBet.viaAdapter
+              ? "text-white bg-[#836EF9] hover:bg-[#7360e0]"
+              : "text-black bg-[#00e87b] hover:bg-[#00d46f]"
+          }`}
         >
-          {step === "claiming" ? "Claiming..." : "Claim Winnings"}
+          {step === "claiming"
+            ? "Claiming..."
+            : savedBet.viaAdapter
+              ? "Claim & Reshield"
+              : "Claim Winnings"}
         </button>
       )}
       {step === "error" && <p className="text-xs text-red-400">{errorMsg}</p>}
@@ -524,9 +662,11 @@ function PrivacyPanel({ market }: { market: Market }) {
       <h3 className="text-white font-semibold mb-3 text-sm">Privacy model</h3>
       <div className="space-y-2.5">
         {[
-          { hidden: false, label: "Amount locked", sub: "Visible — needed for settlement" },
+          { hidden: true, label: "Wallet identity", sub: "Hidden via Unlink adapter" },
           { hidden: true, label: "YES/NO direction", sub: "Hidden via commit-reveal" },
+          { hidden: true, label: "Bet amount", sub: "Hidden — routed through pool" },
           { hidden: true, label: "Your secret key", sub: "Never leaves your browser" },
+          { hidden: true, label: "Winnings destination", sub: "Reshielded to privacy pool" },
         ].map((item) => (
           <div key={item.label} className="flex items-start gap-2.5">
             <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${item.hidden ? "bg-[#00e87b]" : "bg-red-400"}`} />
@@ -568,9 +708,10 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
   const { id } = use(params);
   const marketId = parseInt(id, 10);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [betTab, setBetTab] = useState<"instant" | "limit">("instant");
 
   const { data, isLoading, isError, refetch } = useReadContract({
-    address: SHADOW_ODDS_ADDRESS,
+    address: SHADOW_ODDS_V2_ADDRESS,
     abi: ShadowOddsABI,
     functionName: "markets",
     args: [BigInt(marketId)],
@@ -665,7 +806,7 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
             </div>
 
             {/* Stats */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4">
                 <p className="text-xs text-zinc-500 mb-1">Total Pool</p>
                 <p className="text-[#00e87b] font-bold text-lg font-mono">{formatUSDC(market.totalPool)}</p>
@@ -677,6 +818,10 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
               <div className="rounded-lg border border-zinc-800/60 bg-zinc-900/40 p-4">
                 <p className="text-xs text-zinc-500 mb-1">Reveal window</p>
                 <p className="text-white font-bold text-lg font-mono">{timeRemaining(market.revealDeadline)}</p>
+              </div>
+              <div className="rounded-lg border border-[#00e87b]/20 bg-[#00e87b]/5 p-4">
+                <p className="text-xs text-zinc-500 mb-1">Yield APR</p>
+                <p className="text-[#00e87b] font-bold text-lg font-mono">5%</p>
               </div>
             </div>
 
@@ -726,14 +871,41 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
 
             {/* Action */}
             <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-6">
-              <h2 className="text-white font-semibold mb-4">
-                {status === "betting" && "Place your bet"}
-                {status === "pending" && (isPriceFeed ? "Resolve via Pyth" : "Waiting for resolution")}
-                {status === "reveal" && "Reveal & Claim"}
-                {status === "resolved" && "Claim winnings"}
-              </h2>
+              {status === "betting" && (
+                <>
+                  {/* Tab toggle: Instant / Limit */}
+                  <div className="flex items-center gap-1 mb-4 p-0.5 bg-zinc-900 rounded-lg border border-zinc-800/40">
+                    <button
+                      onClick={() => setBetTab("instant")}
+                      className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                        betTab === "instant" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      Bet
+                    </button>
+                    <button
+                      onClick={() => setBetTab("limit")}
+                      className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${
+                        betTab === "limit" ? "bg-zinc-800 text-white" : "text-zinc-500 hover:text-zinc-300"
+                      }`}
+                    >
+                      Limit Order
+                    </button>
+                  </div>
 
-              {status === "betting" && <BetForm market={market} marketId={marketId} onBetPlaced={triggerRefresh} />}
+                  {betTab === "instant" && <BetForm market={market} marketId={marketId} onBetPlaced={triggerRefresh} />}
+                  {betTab === "limit" && <LimitOrderForm marketId={marketId} feedId={market.priceFeedId} bettingOpen={true} />}
+                </>
+              )}
+
+              {status !== "betting" && (
+                <h2 className="text-white font-semibold mb-4">
+                  {status === "pending" && (isPriceFeed ? "Resolve via Pyth" : "Waiting for resolution")}
+                  {status === "reveal" && "Reveal & Claim"}
+                  {status === "resolved" && "Claim winnings"}
+                </h2>
+              )}
+
               {status === "pending" && isPriceFeed && <ResolveWithPythButton key={refreshKey} marketId={marketId} feedId={market.priceFeedId} onResolved={triggerRefresh} />}
               {status === "pending" && !isPriceFeed && (
                 <p className="text-zinc-500 text-center py-6">Waiting for admin resolution.</p>
@@ -754,9 +926,9 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
                 {[
                   { label: "Oracle", value: isPriceFeed ? "Pyth (trustless)" : "Admin" },
                   { label: "Settlement", value: "USDC" },
-                  { label: "Privacy", value: "Commit-reveal" },
+                  { label: "Privacy", value: "useInteract + commit-reveal" },
                   { label: "Network", value: "Monad testnet" },
-                  { label: "Contract", value: `${SHADOW_ODDS_ADDRESS?.slice(0, 10)}...` },
+                  { label: "Contract", value: `${SHADOW_ODDS_V2_ADDRESS?.slice(0, 10)}...` },
                   { label: "Fee", value: "1% on profits" },
                 ].map(({ label, value }) => (
                   <div key={label} className="flex justify-between py-1 border-b border-zinc-800/30">
@@ -766,7 +938,7 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
                 ))}
               </div>
               <a
-                href={`https://testnet.monadexplorer.com/address/${SHADOW_ODDS_ADDRESS}`}
+                href={`https://testnet.monadexplorer.com/address/${SHADOW_ODDS_V2_ADDRESS}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block mt-3 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -779,9 +951,10 @@ export default function MarketPage({ params }: { params: Promise<{ id: string }>
           {/* Sidebar */}
           <div className="space-y-4">
             <PrivacyScore marketId={marketId} />
+            <YieldIndicator marketId={marketId} totalPool={market.totalPool} />
+            <LimitOrderStatus marketId={marketId} feedId={market.priceFeedId} />
             <ShadowReceipt marketId={marketId} market={market} />
             <PrivacyPanel market={market} />
-            <PrivateAdapter marketId={marketId} bettingOpen={status === "betting"} marketResolved={market.resolved} marketResult={market.result} />
             <UnlinkWallet />
             <PrivacyTimeline />
           </div>
