@@ -6,21 +6,21 @@
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         FRONTEND (Next.js 16)                       │
 │                                                                     │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────────┐  │
-│  │  Market   │  │  Speed   │  │Dashboard │  │   Privacy Suite   │  │
-│  │  Detail   │  │ Markets  │  │ (My Bets)│  │ (Unlink wallet,   │  │
-│  │          │  │          │  │          │  │  burner, adapter)  │  │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────────┬──────────┘  │
-│       │              │              │                 │              │
-│  ┌────┴──────────────┴──────────────┴─────────────────┴──────────┐  │
-│  │                    wagmi v3 + viem                             │  │
-│  └────────────────────────────┬──────────────────────────────────┘  │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───────────────────┐    │
+│  │  Market  │  │  Speed   │  │Dashboard │  │   Privacy Suite   │    │
+│  │  Detail  │  │ Markets  │  │ (My Bets)│  │ (Unlink wallet,   │    │
+│  │          │  │          │  │          │  │  burner, adapter) │    │
+│  └────┬─────┘  └────┬─────┘  └───-─┬────┘  └───────-─┬─────────┘    │
+│       │             │              │                 │              │
+│  ┌────┴─────────────┴──────────────┴─────────────────┴──────────┐   │
+│  │                    wagmi v3 + viem                           │   │
+│  └────────────────────────────┬─────────────────────────────────┘   │
 │                               │                                     │
 │  ┌────────────────────────────┴──────────────────────────────────┐  │
-│  │                  Unlink SDK (@unlink-xyz/react)                │  │
+│  │                  Unlink SDK (@unlink-xyz/react)               │  │    
 │  │  ZK proofs · Burner wallets · Shielded pool · Private sends   │  │
 │  └───────────────────────────────────────────────────────────────┘  │
-└───────────────────────────────┬──────────────────────────────────────┘
+└───────────────────────────────┬─────────────────────────────────────┘
                                 │
                     ┌───────────┴───────────┐
                     │                       │
@@ -217,14 +217,14 @@ Result: No on-chain path from 0x1234 → betting → winning → 0xABCD
 ### Burner Wallet Flow (Implementation)
 
 ```
-                         ┌──────────────────┐
+                         ┌──────────────-────┐
                          │  User's Browser   │
                          │  (localStorage)   │
                          └────────┬──────────┘
                                   │
 Step 1: createBurner(0)           │ Generates keypair locally
                                   ▼
-                         ┌──────────────────┐
+                         ┌───────────────-───┐
                          │  Burner Wallet    │
                          │  (fresh EOA)      │
                          │  MON: 0 USDC: 0   │
@@ -232,14 +232,14 @@ Step 1: createBurner(0)           │ Generates keypair locally
                                   │
 Step 2: fund(USDC, amount)        │ Unlink relay (ZK proof)
                                   ▼
-                         ┌──────────────────┐
+                         ┌───────────────-───┐
                          │  Burner Wallet    │
                          │  MON: 0 USDC: 100 │  ← Has tokens, no gas
                          └────────┬──────────┘
                                   │
 Step 3: sendTransaction(MON)      │ Main wallet sends ~0.05 MON for gas
                                   ▼
-                         ┌──────────────────┐
+                         ┌──────────────────-┐
                          │  Burner Wallet    │
                          │  MON: 0.05        │  ← Now has gas
                          │  USDC: 100        │
@@ -251,13 +251,13 @@ Step 4: approve + placeBet        │ Two txs from burner
                          │  ShadowOdds      │
                          │  Bet recorded    │
                          │  from 0xcf44     │  ← Anonymous bettor
-                         └────────┬──────────┘
+                         └────────┬─────────┘
                                   │
 Step 5: sweepToPool(USDC)         │ After claim, ZK sweep
                                   ▼
                          ┌──────────────────┐
                          │  Shielded Pool   │
-                         │  (winnings safe)  │
+                         │  (winnings safe) │
                          └──────────────────┘
 ```
 
