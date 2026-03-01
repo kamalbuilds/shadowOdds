@@ -1,0 +1,3 @@
+{
+  "installCommand": "rm -f bun.lock && bun install"
+}

@@ -173,7 +173,7 @@ export async function getMarkets(publicClient: ReturnType<typeof createPublicCli
   const now = BigInt(Math.floor(Date.now() / 1000));
   const markets: MarketData[] = [];
 
-  for (let i = 0; i < Number(count); i++) {
+  for (let i = 1; i <= Number(count); i++) {
     const m = await publicClient.readContract({
       address: SHADOW_ODDS_ADDRESS,
       abi: SHADOW_ODDS_ABI,

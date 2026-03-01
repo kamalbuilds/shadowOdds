@@ -69,7 +69,7 @@ function useLivePrice(feedId: string) {
 }
 
 function useCountdown(deadline: bigint) {
-  const [secsLeft, setSecsLeft] = useState(0);
+  const [secsLeft, setSecsLeft] = useState<number | null>(null);
   useEffect(() => {
     function tick() {
       const now = Math.floor(Date.now() / 1000);
@@ -79,7 +79,7 @@ function useCountdown(deadline: bigint) {
     const id = setInterval(tick, 100);
     return () => clearInterval(id);
   }, [deadline]);
-  return secsLeft;
+  return secsLeft ?? 0;
 }
 
 function formatTime(secs: number): string {
@@ -172,7 +172,10 @@ function SwipeCard({
   const bettingSecsLeft = useCountdown(market.bettingDeadline);
   const isBettingOpen = bettingSecsLeft > 0 && !market.resolved;
   const thresholdPrice = Number(market.priceThreshold) / 1e8;
-  const savedBet = address ? loadCommitment(marketId, address) : null;
+  const [savedBet, setSavedBet] = useState<ReturnType<typeof loadCommitment>>(null);
+  useEffect(() => {
+    setSavedBet(address ? loadCommitment(marketId, address) : null);
+  }, [address, marketId, betStep, revealStep]);
 
   const priceAbove = livePrice !== null && livePrice >= thresholdPrice;
 
@@ -538,6 +541,9 @@ export default function SpeedMarketsPage() {
     query: { refetchInterval: 3000 },
   });
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   const count = Number(marketCount ?? 0);
   const startId = Math.max(1, count - 5);
   const marketIds = Array.from({ length: Math.min(count, 6) }, (_, i) => startId + i);
@@ -720,30 +726,34 @@ export default function SpeedMarketsPage() {
 
         {/* Card stack */}
         <div className="relative" style={{ minHeight: 520 }}>
-          {/* Background cards (stack effect) */}
-          {marketIds.slice(currentIndex + 1, currentIndex + 3).map((id, i) => (
-            <div
-              key={id}
-              className="absolute inset-0 w-full max-w-sm mx-auto rounded-2xl border border-zinc-800/30 bg-zinc-900/30"
-              style={{
-                transform: `scale(${1 - (i + 1) * 0.04}) translateY(${(i + 1) * 12}px)`,
-                zIndex: -i - 1,
-                left: "50%",
-                marginLeft: "-192px",
-                width: "384px",
-                height: "480px",
-              }}
-            />
-          ))}
+          {mounted && (
+            <>
+              {/* Background cards (stack effect) */}
+              {marketIds.slice(currentIndex + 1, currentIndex + 3).map((id, i) => (
+                <div
+                  key={id}
+                  className="absolute inset-0 w-full max-w-sm mx-auto rounded-2xl border border-zinc-800/30 bg-zinc-900/30"
+                  style={{
+                    transform: `scale(${1 - (i + 1) * 0.04}) translateY(${(i + 1) * 12}px)`,
+                    zIndex: -i - 1,
+                    left: "50%",
+                    marginLeft: "-192px",
+                    width: "384px",
+                    height: "480px",
+                  }}
+                />
+              ))}
 
-          {/* Active card */}
-          {currentMarketId !== undefined && (
-            <SwipeCard
-              key={currentMarketId}
-              marketId={currentMarketId}
-              betAmount={betAmount}
-              onSwipe={handleSwipe}
-            />
+              {/* Active card */}
+              {currentMarketId !== undefined && (
+                <SwipeCard
+                  key={currentMarketId}
+                  marketId={currentMarketId}
+                  betAmount={betAmount}
+                  onSwipe={handleSwipe}
+                />
+              )}
+            </>
           )}
         </div>
 
