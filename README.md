@@ -10,8 +10,8 @@ Bet privately. Win privately. Withdraw privately. Built on Monad + Unlink.
 
 Polymarket does a billion dollars a week. Every single bet is public your wallet, your direction, your size. Tools exist to stalk whale positions in real time. This creates two critical problems:
 
-1. **Institutional lockout** — No fund manager will take a public position that competitors can front-run
-2. **Insider exploitation** — If you know something, the chain knows you know
+1. **Institutional lockout** -  No fund manager will take a public position that competitors can front-run
+2. **Insider exploitation** - If you know something, the chain knows you know
 
 ## The Solution
 
@@ -110,6 +110,40 @@ shadowodds/
 
 ---
 
+## How It Works
+
+### 1. Place a Bet (Hidden)
+```
+You choose: YES on "ETH > $3000"
+Client generates: secret + nonce
+Client computes:  commitment = keccak256(secret || YES || amount || nonce)
+On-chain stores:  commitment + locked USDC
+Visible to all:   "Someone bet 100 USDC on market #3"
+Hidden:           "...but nobody knows if they bet YES or NO"
+```
+
+### 2. Market Resolves (Trustless)
+```
+Pyth oracle provides price feed → contract checks threshold
+Result: YES (price was above target)
+Anyone can call resolveWithPyth() — permissionless
+```
+
+### 3. Reveal & Claim (Direction Exposed)
+```
+Winner reveals: secret + nonce + direction
+Contract verifies: keccak256 matches stored commitment
+Payout: stake + proportional share of loser pool - 1% fee
+```
+
+### 4. Shield Winnings (Privacy)
+```
+Winnings (in USDC) → Unlink shielded pool (ZK proof)
+Shielded balance → Withdraw to any wallet
+Result: No on-chain link between betting wallet and withdrawal
+```
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -166,42 +200,6 @@ NEXT_PUBLIC_SHADOW_ODDS_ADDRESS=0x62497bB63802cf7CEe9180BCB7229fB7a69d37c0
 NEXT_PUBLIC_USDC_ADDRESS=0x9967AfFd3BE3110AF967D62d8f61598c8224Ef3f
 NEXT_PUBLIC_PYTH_ADDRESS=0x2880aB155794e7179c9eE2e38200202908C17B43
 ```
-
----
-
-## How It Works
-
-### 1. Place a Bet (Hidden)
-```
-You choose: YES on "ETH > $3000"
-Client generates: secret + nonce
-Client computes:  commitment = keccak256(secret || YES || amount || nonce)
-On-chain stores:  commitment + locked USDC
-Visible to all:   "Someone bet 100 USDC on market #3"
-Hidden:           "...but nobody knows if they bet YES or NO"
-```
-
-### 2. Market Resolves (Trustless)
-```
-Pyth oracle provides price feed → contract checks threshold
-Result: YES (price was above target)
-Anyone can call resolveWithPyth() — permissionless
-```
-
-### 3. Reveal & Claim (Direction Exposed)
-```
-Winner reveals: secret + nonce + direction
-Contract verifies: keccak256 matches stored commitment
-Payout: stake + proportional share of loser pool - 1% fee
-```
-
-### 4. Shield Winnings (Privacy)
-```
-Winnings (in USDC) → Unlink shielded pool (ZK proof)
-Shielded balance → Withdraw to any wallet
-Result: No on-chain link between betting wallet and withdrawal
-```
-
 ---
 
 ## Hackathon Tracks
